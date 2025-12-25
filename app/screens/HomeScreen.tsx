@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -11,8 +11,11 @@ import {
   ScrollView,
   RefreshControl,
   Linking, 
+  Modal,
+  StatusBar,
+  Image,
 } from 'react-native';
-import Svg, { Circle } from 'react-native-svg';
+
 import {
   Heart,
   MapPin,
@@ -24,10 +27,15 @@ import {
   ShieldCheck,
   Info,
   ChevronRight,
+  Navigation,
+  X,
+  Settings,
 } from 'lucide-react-native';
 
+import Svg, { Circle } from 'react-native-svg';
 import * as Location from 'expo-location';
 import * as Haptics from 'expo-haptics';
+import MapView, { Marker, PROVIDER_GOOGLE, Circle as MapCircle } from 'react-native-maps';
 
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { API_URL, useAuth } from '../context/AuthContext';
@@ -37,17 +45,17 @@ const { width } = Dimensions.get('window');
 
 // พิกัด รพ.ค่ายกฤษณ์สีวะรา (สกลนคร)
 const HOSPITAL_COORDS = {
-    latitude: 17.1354,
-    longitude: 104.1103,
+    latitude: 17.187368,
+    longitude: 104.105749,
     name: 'รพ.ค่ายกฤษณ์สีวะรา'
 };
 
 const HomeScreen = () => {
     const { authToken } = useAuth();
 
-    // --- SOS States ---
+    // Navigation & UI States
     const [isCalling, setIsCalling] = useState(false);
-    // const [secondsLeft, setSecondsLeft] = useState(360); // 6 นาที
+    const [showInAppMap, setShowInAppMap] = useState(false); // State สำหรับเปิด/ปิดแผนที่ในแอป
     const [secondsLeft, setSecondsLeft] = useState(0);
     const [pressProgress, setPressProgress] = useState(0);
     const [isPressing, setIsPressing] = useState(false);
@@ -104,30 +112,25 @@ const HomeScreen = () => {
 
     const formatTime = (s) => `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, '0')}`;
 
+    const triggerHaptic = async (type) => {
+        try {
+            if (Platform.OS === 'web') return;
+            switch (type) {
+                case 'impactMedium': await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); break;
+                case 'selection': await Haptics.selectionAsync(); break;
+                case 'notificationSuccess': await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); break;
+                default: await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            }
+        } catch (e) {
+        // ป้องกัน Error บน Simulator หรือเครื่องที่ไม่มีระบบสั่น
+        }
+    };
+
     // ฟังก์ชันสำหรับเปิดแผนที่เพื่อดูตำแหน่งปัจจุบัน
     const openInMaps = () => {
-        if (currentLocation) {
-        const { latitude, longitude } = currentLocation;
-        const label = "ตำแหน่งปัจจุบันของฉัน";
-        
-        // สร้าง URL สำหรับเปิดแอปแผนที่ในแต่ละระบบ
-        const url = Platform.select({
-            ios: `maps:0,0?q=${label}@${latitude},${longitude}`,
-            android: `geo:0,0?q=${latitude},${longitude}(${label})`
-        });
-
-        Linking.canOpenURL(url).then((supported) => {
-            if (supported) {
-            Linking.openURL(url);
-            } else {
-            // หากไม่มีแอปแผนที่ในเครื่อง ให้เปิดผ่าน Browser (Google Maps)
-            const browserUrl = `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`;
-            Linking.openURL(browserUrl);
-            }
-        });
-        
-        // สั่นเบาๆ เมื่อกดเปิดแผนที่
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        if (currentLocation && currentLocation.latitude) {
+        setShowInAppMap(true);
+        triggerHaptic('impactMedium');
         }
     };
     // --- Data & Logic Functions ---
@@ -143,13 +146,14 @@ const HomeScreen = () => {
 
     // ฟังก์ชันแปลงพิกัดเป็นชื่อสถานที่ (Reverse Geocoding)
     const getAddressFromCoords = async (latitude, longitude) => {
+        if (!latitude || !longitude) return;
         try {
         const reverseGeocode = await Location.reverseGeocodeAsync({
             latitude,
             longitude
         });
 
-        if (reverseGeocode.length > 0) {
+         if (reverseGeocode && reverseGeocode.length > 0) {
             const place = reverseGeocode[0];
             // จัดรูปแบบที่อยู่: ถนน, แขวง/ตำบล, เขต/อำเภอ, จังหวัด
             const formattedAddress = [
@@ -166,33 +170,45 @@ const HomeScreen = () => {
     };
 
     // ฟังก์ชันอัปเดต UI เมื่อพิกัดเปลี่ยน
-    const updateUIWithLocation = (coords) => {
+    const updateUIWithLocation = useCallback(async (coords) => {
+        if (!coords || typeof coords !== 'object') return;
+        
         const { latitude, longitude } = coords;
+        if (latitude === undefined || longitude === undefined) return;
+
             setCurrentLocation({ latitude, longitude });
             getAddressFromCoords(latitude, longitude);
         const newDist = calculateDistance(latitude, longitude, HOSPITAL_COORDS.latitude, HOSPITAL_COORDS.longitude);
             setDistance(newDist);
             setIsLocationLive(true);
-    };
+    }, []);
 
     const startLocationTracking = async () => {
+        try {
         // ดึงครั้งแรกเพื่อเริ่มระบบ
-        let initialLocation = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-        updateUIWithLocation(initialLocation.coords);
+            let initialLocation = await Location.getCurrentPositionAsync({ 
+                accuracy: Location.Accuracy.Highest 
+            });
+            if (initialLocation && initialLocation.coords) {
+                updateUIWithLocation(initialLocation.coords);
+            }
         
         // ตั้งค่าการติดตามแบบเรียลไทม์ (Watcher)
-        if (watchSubscription.current) watchSubscription.current.remove();
-        
+            if (watchSubscription.current) watchSubscription.current.remove();
             watchSubscription.current = await Location.watchPositionAsync(
-            { 
-                accuracy: Location.Accuracy.High, 
-                distanceInterval: 5, // อัปเดตทุกๆ 5 เมตรเพื่อให้เรียลไทม์ที่สุด
-                timeInterval: 10000 // หรืออัปเดตทุก 10 วินาทีถ้าอยู่นิ่ง
-            },
-            (newLocation) => {
-                updateUIWithLocation(newLocation.coords);
-            }
-        );
+                { accuracy: Location.Accuracy.BestForNavigation, 
+                    distanceInterval: 5, // อัปเดตทุกๆ 5 เมตรเพื่อให้เรียลไทม์ที่สุด
+                    timeInterval: 10000 // หรืออัปเดตทุก 10 วินาทีถ้าอยู่นิ่ง
+                },
+                (newLocation) => {
+                    if (newLocation && newLocation.coords) {
+                        updateUIWithLocation(newLocation.coords);
+                    }
+                }
+            );
+        } catch (err) {
+            console.log("Tracking error:", err.message);
+        }
     };
 
     // --- Location Logic สำหรับ Expo ---
@@ -202,11 +218,13 @@ const HomeScreen = () => {
        let { status } = await Location.requestForegroundPermissionsAsync();
             if (status !== 'granted') {
                 setAddress('กรุณาอนุญาตการเข้าถึงตำแหน่ง');
-                return;
+                return false;
             }
             startLocationTracking();
+            return true;
         } catch (error) {
             console.log("Permission error:", error);
+            return false;
         }
     };
 
@@ -218,11 +236,12 @@ const HomeScreen = () => {
         
             try {
             // ดึงข้อมูลโปรไฟล์และตำแหน่งใหม่ไปพร้อมกัน
+                await triggerHaptic('impactMedium');
                 await loadUser();
                 const { status } = await Location.getForegroundPermissionsAsync();
                 if (status === 'granted') {
                     let loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Highest });
-                    updateUIWithLocation(loc.coords);
+                    if (loc && loc.coords) updateUIWithLocation(loc.coords);
                 } else {
                     await requestLocationPermission();
                 }
@@ -235,27 +254,6 @@ const HomeScreen = () => {
     
     // --- Haptic & Animation Logic ---
 
-    const triggerHaptic = async (type) => {
-        try {
-            switch (type) {
-                case 'impactMedium':
-                    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                    break;
-                case 'selection':
-                    await Haptics.selectionAsync();
-                    break;
-                case 'notificationSuccess':
-                    await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                    break;
-                default:
-                    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            }
-        } catch (e) {
-            console.log("Haptics not supported in this environment");
-        }
-    };
-
-
     // --- SOS Logic ---
     const startSOS = () => {
         setIsCalling(true);
@@ -267,19 +265,20 @@ const HomeScreen = () => {
     };
 
     const handlePressIn = () => {
-        setIsPressing(true);
-        triggerHaptic('impactMedium'); 
-        Animated.spring(scaleAnim, { toValue: 0.9, useNativeDriver: true }).start();
+        if (isCalling) return;
+            setIsPressing(true);
+            triggerHaptic('impactMedium'); 
+            Animated.spring(scaleAnim, { toValue: 0.9, useNativeDriver: true }).start();
         const start = Date.now();
         timerRef.current = setInterval(() => {
-            const elapsed = Date.now() - start;
-            const progress = Math.min((elapsed / HOLD_DURATION) * 100, 100);
+        const elapsed = Date.now() - start;
+        const progress = Math.min((elapsed / HOLD_DURATION) * 100, 100);
         setPressProgress(progress);
-            if (Math.floor(progress) % 25 === 0 && progress > 0 && progress < 100) triggerHaptic('selection');
-            if (progress >= 100) {
-                clearInterval(timerRef.current);
-                startSOS();
-            }
+        if (Math.floor(progress) % 25 === 0 && progress > 0 && progress < 100) triggerHaptic('selection');
+        if (progress >= 100) {
+            clearInterval(timerRef.current);
+            startSOS();
+        }
         }, 16);
     };
 
@@ -295,7 +294,8 @@ const HomeScreen = () => {
     useEffect(() => {
         const initData = async () => {
         setLoading(true);
-        await Promise.all([loadUser(), requestLocationPermission()]);
+        await loadUser();
+        await requestLocationPermission();
         setLoading(false);
         };
         initData();
@@ -321,20 +321,36 @@ const HomeScreen = () => {
     }, [isCalling, secondsLeft]);
 
     useEffect(() => {
+        const pulse = Animated.loop(
+        Animated.sequence([
+            Animated.timing(pulseAnim, { toValue: 1.08, duration: 1000, useNativeDriver: true }),
+            Animated.timing(pulseAnim, { toValue: 1, duration: 1000, useNativeDriver: true }),
+        ])
+        );
+
         if (!isPressing && !isCalling) {
-        Animated.loop(
-            Animated.sequence([
-            Animated.timing(pulseAnim, { toValue: 1.12, duration: 800, useNativeDriver: true }),
-            Animated.timing(pulseAnim, { toValue: 1, duration: 800, useNativeDriver: true }),
-            ])
-        ).start();
+            pulse.start();
         } else {
-        pulseAnim.setValue(1);
+            pulse.stop();
+            pulseAnim.setValue(1);
         }
+        
+        return () => pulse.stop();
     }, [isPressing, isCalling]);
 
     // --- Helpers ---
     const strokeDashoffset = circumference - (pressProgress / 100) * circumference;
+
+      // ป้องกัน Error ตอนคำนวณ Region ของแผนที่
+    const mapRegion = useMemo(() => {
+        if (!currentLocation || !currentLocation.latitude) return null;
+        return {
+            latitude: currentLocation.latitude,
+            longitude: currentLocation.longitude,
+            latitudeDelta: 0.005,
+            longitudeDelta: 0.005,
+        };
+    }, [currentLocation]);
 
     // แสดงตัวโหลดข้อมูลถ้ายังดึงข้อมูลไม่เสร็จ
     if (loading) {
@@ -345,250 +361,324 @@ const HomeScreen = () => {
             </View>
         );
     }
-
-     return (
-         <SafeAreaView style={styles.container}>
-            <ScrollView 
-                showsVerticalScrollIndicator={false} 
-                contentContainerStyle={{ paddingBottom: 30 }}
-                refreshControl={
-                <RefreshControl
-                    refreshing={refreshing}
-                    onRefresh={onRefresh}
-                    colors={['#EF4444']}
-                    tintColor={'#EF4444'}
-                />
-                }
+ 
+    return (
+        <SafeAreaView style={styles.container}>
+        <StatusBar barStyle="dark-content" />
+        
+        {/* --- ส่วน Header (โลโก้ และ ตั้งค่า) --- */}
+        <View style={styles.headerBar}>
+            <View style={styles.logoContainer}>
+            <View style={styles.logoCircle}>
+                <Heart size={16} color="white" fill="white" />
+            </View>
+            {/* แก้ไขชื่อแอปตรงนี้ */}
+            <Text style={styles.appNameText}>KSVR <Text style={styles.appNameLight}>ACS FAST TRACK</Text></Text>
+            </View>
+            <TouchableOpacity 
+            style={styles.settingsIconButton}
+            hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
+            onPress={() => triggerHaptic('impactMedium')}
             >
-                {/* --- Comprehensive Patient Profile Card (Includes Location) --- */}
-                <View style={styles.unifiedCard}>
-                {/* Section 1: Identity & Status */}
-                <View style={styles.profileTopRow}>
-                    <View style={styles.profileInfoMain}>
-                    <View style={styles.avatarContainer}>
-                        <View style={styles.avatarCircle}>
-                        <User size={28} color="#EF4444" />
-                        </View>
-                        <View style={styles.onlineBadge} />
+            <Settings size={20} color="#94A3B8" />
+            </TouchableOpacity>
+        </View>
+
+        <ScrollView 
+            showsVerticalScrollIndicator={false} 
+            contentContainerStyle={{ paddingBottom: 40 }}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#EF4444']} tintColor={'#EF4444'} />}
+        >
+            {/* --- Unified Patient & Location Card --- */}
+            <View style={styles.unifiedCard}>
+            <View style={styles.profileTopRow}>
+                <View style={styles.profileInfoMain}>
+                <View style={styles.avatarContainer}>
+                    <View style={styles.avatarCircle}>
+                    <User size={28} color="#EF4444" />
                     </View>
-                    <View style={styles.nameContainer}>
-                        <Text style={styles.patientName}>{patientProfile?.name || patientProfile?.full_name || 'ไม่ระบุชื่อ'}</Text>
-                        <View style={styles.statusPill}>
-                        <Activity size={10} color="#EF4444" />
-                        <Text style={styles.statusPillText}>Cardiac Monitoring Active</Text>
-                        </View>
+                    <View style={styles.onlineBadge} />
+                </View>
+                <View style={styles.nameContainer}>
+                    <Text style={styles.patientName}>{patientProfile?.name || 'ไม่ระบุชื่อ'}</Text>
+                    <View style={styles.statusPill}>
+                    <Activity size={10} color="#EF4444" />
+                    <Text style={styles.statusPillText}>Cardiac Monitoring Active</Text>
                     </View>
-                    </View>
-                    <TouchableOpacity style={styles.medicalIdButton}>
-                    <ShieldCheck size={22} color="#94A3B8" />
+                </View>
+                </View>
+                <TouchableOpacity style={styles.medicalIdButton}>
+                <ShieldCheck size={22} color="#94A3B8" />
+                </TouchableOpacity>
+            </View>
+
+            <View style={styles.profileQuickStats}>
+                <View style={styles.statBox}>
+                <Text style={styles.statLabel}>เลือด</Text>
+                <Text style={styles.statValueRed}>{patientProfile?.bloodType || patientProfile?.blood_group || '-'}</Text>
+                </View>
+                <View style={styles.statDivider} />
+                <View style={styles.statBox}>
+                <Text style={styles.statLabel}>อายุ</Text>
+                <Text style={styles.statValue}>{patientProfile?.age || '-'}</Text>
+                </View>
+                <View style={styles.statDivider} />
+                <View style={styles.statBox}>
+                <Text style={styles.statLabel}>ระยะห่าง</Text>
+                <Text style={styles.statValue}>{distance} กม.</Text>
+                </View>
+            </View>
+
+            <TouchableOpacity onPress={openInMaps} activeOpacity={0.7} style={styles.locationIntegrator}>
+                <View style={styles.locationHeaderRow}>
+                <View style={styles.locationLabelGroup}><MapPin size={14} color="#3B82F6" /><Text style={styles.locationLabelText}>ตำแหน่งปัจจุบัน</Text></View>
+                <View style={styles.liveGPSBadge}><Animated.View style={[styles.liveGPSDot, { opacity: blinkAnim }]} /><Text style={styles.liveGPSText}>LIVE GPS</Text></View>
+                </View>
+                <View style={styles.addressContainer}>
+                <Text style={styles.addressDisplayText} numberOfLines={1}>{address}</Text>
+                </View>
+            </TouchableOpacity>
+            </View>
+
+            <View style={styles.mainInteractiveArea}>
+            {!isCalling ? (
+                <>
+                <View style={styles.headerTextContainer}>
+                    <Text style={styles.title}>ขอความช่วยเหลือ</Text>
+                    <Text style={styles.subtitle}>{HOSPITAL_COORDS.name} อยู่ห่างจากคุณ {distance} กม.{'\n'}ทีมกู้ชีพพร้อมออกปฏิบัติการทันที</Text>
+                </View>
+
+                <View style={styles.sosWrapper}>
+                    <Svg width={220} height={220} style={styles.svg}>
+                    <Circle cx="110" cy="110" r={radius} stroke="#F1F5F9" strokeWidth={strokeWidth} fill="transparent" />
+                    <Circle cx="110" cy="110" r={radius} stroke="#EF4444" strokeWidth={strokeWidth} fill="transparent" strokeDasharray={circumference} strokeDashoffset={strokeDashoffset} strokeLinecap="round" />
+                    </Svg>
+
+                    <Animated.View style={{ transform: [{ scale: isPressing ? scaleAnim : pulseAnim }] }}>
+                    <TouchableOpacity activeOpacity={1} onPressIn={handlePressIn} onPressOut={handlePressOut} style={[styles.sosButton, isPressing && styles.sosButtonActive]}>
+                        <Heart size={48} color="white" fill="white" />
+                        <Text style={styles.sosText}>{isPressing ? `${Math.ceil((HOLD_DURATION - (pressProgress * HOLD_DURATION / 100)) / 1000)}s` : 'ฉุกเฉิน'}</Text>
                     </TouchableOpacity>
+                    </Animated.View>
                 </View>
 
-                {/* Section 2: Vitals / Quick Stats */}
-                <View style={styles.profileQuickStats}>
-                    <View style={styles.statBox}>
-                    <Text style={styles.statLabel}>เลือด</Text>
-                    <Text style={styles.statValueRed}>{patientProfile?.bloodType || patientProfile?.blood_group || '-'}</Text>
+                <View style={[styles.alertCard, { opacity: isPressing ? 0 : 1 }]}>
+                    <AlertTriangle size={16} color="#B45309" />
+                    <View style={styles.alertTextContainer}>
+                    <Text style={styles.alertTitle}>ระบบยืนยันพิกัดเรียลไทม์</Text>
+                    <Text style={styles.alertSubtitle}>พิกัดของคุณถูกส่งให้ทีมกู้ชีพแล้ว</Text>
                     </View>
-                    <View style={styles.statDivider} />
-                    <View style={styles.statBox}>
-                    <Text style={styles.statLabel}>อายุ</Text>
-                    <Text style={styles.statValue}>{patientProfile?.age ? `${patientProfile.age} ปี` : '-'}</Text>
+                </View>
+                </>
+            ) : (
+                <View style={styles.statusContainer}>
+                <View style={styles.activeCard}>
+                    <View style={styles.activeCardHeader}>
+                    <View>
+                        <View style={styles.liveIndicator}><View style={styles.redDot} /><Text style={styles.liveText}>ติดตามพิกัดปัจจุบัน</Text></View>
+                        <Text style={styles.cardTitle}>กำลังเข้าช่วยเหลือ</Text>
                     </View>
-                    <View style={styles.statDivider} />
-                    <View style={styles.statBox}>
-                    <Text style={styles.statLabel}>ระยะห่าง</Text>
-                    <Text style={styles.statValue}>{distance} กม.</Text>
+                    <View style={styles.timerBadge}>
+                        <Text style={styles.timerText}>{formatTime(secondsLeft)}</Text>
+                        <Text style={styles.timerUnit}>นาที</Text>
+                    </View>
+                    </View>
+                    <View style={styles.cardDivider} />
+                    <View style={styles.dispatchedInfo}>
+                    <Zap size={24} color="#FACC15" />
+                    <View style={{ marginLeft: 15 }}>
+                        <Text style={styles.unitTitle}>{HOSPITAL_COORDS.name}</Text>
+                        <Text style={styles.unitSub}>เจ้าหน้าที่กำลังมุ่งหน้าไปตามพิกัดของคุณ</Text>
+                    </View>
                     </View>
                 </View>
 
-                {/* Section 3: Integrated Location (Clickable) */}
                 <TouchableOpacity 
-                    onPress={openInMaps}
-                    activeOpacity={0.7}
-                    style={styles.locationIntegrator}
+                    onPress={() => setIsCalling(false)} 
+                    style={styles.cancelButton}
+                    hitSlop={{ top: 20, bottom: 20, left: 40, right: 40 }}
+                    activeOpacity={0.6}
                 >
-                    <View style={styles.locationHeaderRow}>
-                    <View style={styles.locationLabelGroup}>
-                        <MapPin size={14} color="#3B82F6" />
-                        <Text style={styles.locationLabelText}>ตำแหน่งปัจจุบัน</Text>
-                    </View>
-                    <View style={styles.liveGPSBadge}>
-                        <Animated.View style={[styles.liveGPSDot, { opacity: blinkAnim }]} />
-                        <Text style={styles.liveGPSText}>LIVE GPS</Text>
-                    </View>
-                    </View>
-                    <View style={styles.addressContainer}>
-                    <Text style={styles.addressDisplayText} numberOfLines={1}>
-                        {address}
-                    </Text>
-                    <ChevronRight size={14} color="#CBD5E1" />
-                    </View>
+                    <Text style={styles.cancelButtonText}>ยกเลิกรายการเรียก</Text>
                 </TouchableOpacity>
                 </View>
+            )}
+            </View>
+        </ScrollView>
 
-                <View style={styles.mainInteractiveArea}>
-                {!isCalling ? (
-                    <>
-                    <View style={styles.headerTextContainer}>
-                        <Text style={styles.title}>ขอความช่วยเหลือ</Text>
-                        <Text style={styles.subtitle}>
-                        รพ.ค่ายกฤษณ์สีวะรา อยู่ห่างจากคุณ {distance} กม.{'\n'}ทีมกู้ชีพพร้อมออกปฏิบัติการทันที
-                        </Text>
-                    </View>
-
-                    <View style={styles.sosWrapper}>
-                        <Svg width={220} height={220} style={styles.svg}>
-                        <Circle cx="110" cy="110" r={radius} stroke="#F1F5F9" strokeWidth={strokeWidth} fill="transparent" />
-                        <Circle cx="110" cy="110" r={radius} stroke="#EF4444" strokeWidth={strokeWidth} fill="transparent" strokeDasharray={circumference} strokeDashoffset={strokeDashoffset} strokeLinecap="round" />
-                        </Svg>
-
-                        <Animated.View style={{ transform: [{ scale: isPressing ? scaleAnim : pulseAnim }] }}>
-                        <TouchableOpacity activeOpacity={1} onPressIn={handlePressIn} onPressOut={handlePressOut} style={[styles.sosButton, isPressing && styles.sosButtonActive]}>
-                            <Heart size={48} color="white" fill="white" />
-                            <Text style={styles.sosText}>
-                            {isPressing ? `${Math.ceil((HOLD_DURATION - (pressProgress * HOLD_DURATION / 100)) / 1000)}s` : 'ฉุกเฉิน'}
-                            </Text>
-                        </TouchableOpacity>
-                        </Animated.View>
-                    </View>
-
-                    <View style={[styles.alertCard, { opacity: isPressing ? 0 : 1 }]}>
-                        <AlertTriangle size={16} color="#B45309" />
-                        <View style={styles.alertTextContainer}>
-                        <Text style={styles.alertTitle}>ระบบยืนยันตัวตนคนไข้</Text>
-                        <Text style={styles.alertSubtitle}>ข้อมูลและพิกัดของคุณจะถูกส่งให้ทีมแพทย์ทันที</Text>
-                        </View>
-                    </View>
-
-                    {!isPressing && (
-                        <View style={styles.tipCard}>
-                        <View style={styles.tipHeader}>
-                            <Info size={14} color="#3B82F6" />
-                            <Text style={styles.tipTitle}>ข้อควรระวัง</Text>
-                        </View>
-                        <Text style={styles.tipText}>หากแน่นหน้าอกให้รีบนั่งพัก หายใจลึกๆ และเตรียมยาประจำตัวไว้</Text>
-                        </View>
-                    )}
-                    </>
-                ) : (
-                    <View style={styles.statusContainer}>
-                    <View style={styles.activeCard}>
-                        <View style={styles.activeCardHeader}>
-                        <View>
-                            <View style={styles.liveIndicator}>
-                            <View style={styles.redDot} />
-                            <Text style={styles.liveText}>กำลังเดินทางมาที่พิกัดของคุณ</Text>
-                            </View>
-                            <Text style={styles.cardTitle}>กำลังเข้าช่วยเหลือ</Text>
-                        </View>
-                        <View style={styles.timerBadge}>
-                            <Text style={styles.timerText}>{formatTime(secondsLeft)}</Text>
-                            <Text style={styles.timerUnit}>นาที</Text>
-                        </View>
-                        </View>
-                        <View style={styles.cardDivider} />
-                        <View style={styles.dispatchedInfo}>
-                        <Zap size={24} color="#FACC15" />
-                        <View style={{ marginLeft: 15 }}>
-                            <Text style={styles.unitTitle}>{HOSPITAL_COORDS.name}</Text>
-                            <Text style={styles.unitSub}>เจ้าหน้าที่ได้รับตำแหน่งเรียลไทม์แล้ว</Text>
-                        </View>
-                        </View>
-                    </View>
-
-                    <View style={styles.checklistContainer}>
-                        <Text style={styles.checklistHeader}>แนวทางปฏิบัติระหว่างรอ:</Text>
-                        {[
-                        { text: 'หยุดทุกกิจกรรม นั่งในท่าที่สบายที่สุด', bold: true },
-                        { text: 'อมยาใต้ลิ้นทันที (หากมีและเคยใช้)', bold: true },
-                        { text: 'เตรียมยาและประวัติการรักษาไว้ข้างตัว', bold: false },
-                        { text: 'หากอยู่ลำพัง ให้ปลดล็อคประตูบ้าน', bold: false },
-                        ].map((item, index) => (
-                        <View key={index} style={styles.checkItem}>
-                            <View style={[styles.checkCircle, item.bold && styles.checkCircleActive]} />
-                            <Text style={[styles.checkText, item.bold && styles.checkTextBold]}>{item.text}</Text>
-                        </View>
-                        ))}
-                    </View>
-
-                    <TouchableOpacity 
-                        onPress={() => setIsCalling(false)} 
-                        style={styles.cancelButton}
-                        hitSlop={{ top: 20, bottom: 20, left: 40, right: 40 }}
-                        activeOpacity={0.6}
-                    >
-                        <Text style={styles.cancelButtonText}>ยกเลิกรายการเรียก</Text>
-                    </TouchableOpacity>
-                    </View>
-                )}
+        {/* --- In-App Map Modal --- */}
+        <Modal
+            animationType="slide"
+            transparent={false}
+            visible={showInAppMap}
+            onRequestClose={() => setShowInAppMap(false)}
+        >
+            <View style={styles.mapModalContainer}>
+            <View style={styles.mapHeader}>
+                <View style={{ flex: 1 }}>
+                <Text style={styles.mapHeaderTitle}>ตำแหน่งของคุณ</Text>
+                <Text style={styles.mapHeaderSub} numberOfLines={1}>{address}</Text>
                 </View>
-            </ScrollView>
+                <TouchableOpacity 
+                onPress={() => setShowInAppMap(false)} 
+                style={styles.closeMapButton}
+                hitSlop={{ top: 40, bottom: 40, left: 40, right: 40 }} 
+                >
+                <X size={26} color="#1E293B" />
+                </TouchableOpacity>
+            </View>
+            
+            <View style={styles.mapViewWrapper}>
+                {mapRegion ? (
+                <MapView
+                    provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
+                    style={styles.map}
+                    initialRegion={mapRegion}
+                    showsUserLocation={true}
+                >
+                    <Marker
+                    coordinate={{
+                        latitude: mapRegion.latitude,
+                        longitude: mapRegion.longitude,
+                    }}
+                    title="คุณอยู่ที่นี่"
+                    >
+                    <View style={styles.customMarker}>
+                        <Heart size={18} color="white" fill="#EF4444" />
+                    </View>
+                    </Marker>
+
+                    <Marker
+                    coordinate={{
+                        latitude: HOSPITAL_COORDS.latitude,
+                        longitude: HOSPITAL_COORDS.longitude,
+                    }}
+                    title={HOSPITAL_COORDS.name}
+                    pinColor="#3B82F6"
+                    />
+
+                    <MapCircle
+                    center={{
+                        latitude: mapRegion.latitude,
+                        longitude: mapRegion.longitude,
+                    }}
+                    radius={100}
+                    strokeColor="rgba(239, 68, 68, 0.5)"
+                    fillColor="rgba(239, 68, 68, 0.1)"
+                    />
+                </MapView>
+                ) : (
+                <View style={styles.mapLoading}>
+                    <ActivityIndicator size="large" color="#EF4444" />
+                    <Text style={styles.loadingText}>กำลังดึงแผนที่...</Text>
+                </View>
+                )}
+            </View>
+            
+            <SafeAreaView style={styles.mapFooter}>
+                <View style={styles.distanceInfo}>
+                    <Navigation size={18} color="#3B82F6" />
+                    <Text style={styles.distanceText}>{distance} กม. จาก รพ.</Text>
+                </View>
+                <TouchableOpacity 
+                    style={styles.externalMapLink}
+                    onPress={() => {
+                    if (!currentLocation) return;
+                    const scheme = Platform.select({ ios: 'maps:0,0?q=', android: 'geo:0,0?q=' });
+                    const latLng = `${currentLocation.latitude},${currentLocation.longitude}`;
+                    const label = 'Patient Location';
+                    const url = Platform.select({
+                        ios: `${scheme}${label}@${latLng}`,
+                        android: `${scheme}${latLng}(${label})`
+                    });
+                    if (url) Linking.openURL(url);
+                    }}
+                >
+                    <Text style={styles.externalMapText}>แอปแผนที่</Text>
+                </TouchableOpacity>
+            </SafeAreaView>
+            </View>
+        </Modal>
         </SafeAreaView>
     );
 };
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#FDFEFF' },
-  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#FDFEFF' },
-  loadingText: { marginTop: 10, color: '#94A3B8', fontWeight: 'bold' },
   
-  // Unified Card Styles
-  unifiedCard: { 
-    backgroundColor: 'white', 
-    marginHorizontal: 20, 
-    marginTop: 10, 
-    padding: 20, 
-    borderRadius: 35, 
-    borderWidth: 1, 
-    borderColor: '#F1F5F9',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.03,
-    shadowRadius: 20,
+  // --- New Header Bar Styles ---
+  headerBar: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 25,
+    paddingVertical: 12,
+    backgroundColor: '#FDFEFF',
+  },
+  logoContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  logoCircle: {
+    width: 34,
+    height: 34,
+    borderRadius: 12,
+    backgroundColor: '#EF4444',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#EF4444',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
     elevation: 4,
   },
+  appNameText: {
+    fontSize: 16,
+    fontWeight: '900',
+    color: '#1E293B',
+    letterSpacing: 0.5,
+  },
+  appNameLight: {
+    fontWeight: '400',
+    color: '#94A3B8',
+  },
+  settingsIconButton: {
+    padding: 8,
+    backgroundColor: '#F8FAFC',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
+  },
+
+  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#FDFEFF' },
+  loadingText: { marginTop: 10, color: '#94A3B8', fontWeight: 'bold' },
+  unifiedCard: { backgroundColor: 'white', marginHorizontal: 20, marginTop: 5, padding: 20, borderRadius: 35, borderWidth: 1, borderColor: '#F1F5F9', elevation: 4 },
   profileTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
   profileInfoMain: { flexDirection: 'row', alignItems: 'center', flex: 1 },
   avatarContainer: { position: 'relative', marginRight: 15 },
   avatarCircle: { width: 52, height: 52, borderRadius: 18, backgroundColor: '#FEF2F2', justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: '#FEE2E2' },
   onlineBadge: { position: 'absolute', bottom: -2, right: -2, width: 14, height: 14, borderRadius: 7, backgroundColor: '#22C55E', borderWidth: 2, borderColor: 'white' },
   nameContainer: { flex: 1 },
-  patientName: { fontSize: 18, fontWeight: 'bold', color: '#1E293B', marginBottom: 2, textAlign: 'left' },
+  patientName: { fontSize: 18, fontWeight: 'bold', color: '#1E293B', textAlign: 'left' },
   statusPill: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FEF2F2', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 20, alignSelf: 'flex-start' },
   statusPillText: { fontSize: 9, fontWeight: 'bold', color: '#EF4444', marginLeft: 4 },
   medicalIdButton: { width: 42, height: 42, borderRadius: 16, backgroundColor: '#F8FAFC', justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: '#F1F5F9' },
-  
   profileQuickStats: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 15, borderTopWidth: 1, borderTopColor: '#F8FAFC' },
   statBox: { alignItems: 'center', flex: 1 },
   statLabel: { fontSize: 9, fontWeight: '900', color: '#94A3B8', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 },
   statValue: { fontSize: 15, fontWeight: 'bold', color: '#334155' },
   statValueRed: { fontSize: 15, fontWeight: 'bold', color: '#EF4444' },
   statDivider: { width: 1, height: 20, backgroundColor: '#F1F5F9' },
-
-  // Location Integrator Styles
-  locationIntegrator: {
-    backgroundColor: '#F8FAFC',
-    borderRadius: 22,
-    padding: 15,
-    marginTop: 5,
-    borderWidth: 1,
-    borderColor: '#F1F5F9',
-  },
-  locationHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
+  locationIntegrator: { backgroundColor: '#F8FAFC', borderRadius: 22, padding: 15, marginTop: 5, borderWidth: 1, borderColor: '#F1F5F9' },
+  locationHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
   locationLabelGroup: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   locationLabelText: { fontSize: 10, fontWeight: '800', color: '#64748B', textTransform: 'uppercase' },
   liveGPSBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#DCFCE7', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10 },
   liveGPSDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#22C55E', marginRight: 4 },
   liveGPSText: { fontSize: 8, fontWeight: '900', color: '#166534' },
-  addressContainer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  addressDisplayText: { fontSize: 13, fontWeight: 'bold', color: '#1E293B', flex: 1, textAlign: 'left' },
-
+  addressContainer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
+  addressDisplayText: { fontSize: 13, fontWeight: 'bold', color: '#1E293B', textAlign: 'center', flex: 1 },
   mainInteractiveArea: { flex: 1, alignItems: 'center', justifyContent: 'center', marginTop: 20 },
   headerTextContainer: { alignItems: 'center', marginBottom: 20, paddingHorizontal: 20 },
   title: { fontSize: 32, fontWeight: '900', color: '#1E293B', marginBottom: 8 },
@@ -602,10 +692,6 @@ const styles = StyleSheet.create({
   alertTextContainer: { marginLeft: 12 },
   alertTitle: { fontSize: 12, fontWeight: 'bold', color: '#92400E', textAlign: 'left' },
   alertSubtitle: { fontSize: 11, color: '#B45309', opacity: 0.8, textAlign: 'left' },
-  tipCard: { backgroundColor: '#EFF6FF', marginHorizontal: 24, marginTop: 20, padding: 16, borderRadius: 20, borderWidth: 1, borderColor: '#DBEAFE' },
-  tipHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 6 },
-  tipTitle: { fontSize: 12, fontWeight: '900', color: '#1E40AF', marginLeft: 6, textTransform: 'uppercase' },
-  tipText: { fontSize: 11, color: '#3B82F6', fontWeight: '600', lineHeight: 16 },
   statusContainer: { width: '100%', paddingHorizontal: 20 },
   activeCard: { backgroundColor: '#0F172A', borderRadius: 35, padding: 25 },
   activeCardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 15 },
@@ -620,16 +706,40 @@ const styles = StyleSheet.create({
   dispatchedInfo: { flexDirection: 'row', alignItems: 'center', marginTop: 10 },
   unitTitle: { color: 'white', fontSize: 14, fontWeight: 'bold', textAlign: 'left' },
   unitSub: { color: 'rgba(255,255,255,0.5)', fontSize: 11, textAlign: 'left' },
-  checklistContainer: { marginTop: 25, paddingHorizontal: 5 },
-  checklistHeader: { fontSize: 14, fontWeight: '900', color: '#1E293B', marginBottom: 15, textAlign: 'left' },
-  checkItem: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 12 },
-  checkCircle: { width: 18, height: 18, borderRadius: 9, borderWidth: 2, borderColor: '#CBD5E1', marginRight: 12, marginTop: 1 },
-  checkCircleActive: { borderColor: '#EF4444', backgroundColor: '#FEF2F2' },
-  checkText: { fontSize: 12, fontWeight: '500', color: '#475569', textAlign: 'left', flex: 1, lineHeight: 18 },
-  checkTextBold: { color: '#1E293B', fontWeight: 'bold' },
   cancelButton: { marginTop: 35, paddingVertical: 12, paddingHorizontal: 20, alignItems: 'center', alignSelf: 'center' },
   cancelButtonText: { color: '#94A3B8', fontSize: 12, fontWeight: 'bold', letterSpacing: 1.5, textTransform: 'uppercase', textDecorationLine: 'underline' },
+  mapModalContainer: { flex: 1, backgroundColor: 'white' },
+  mapHeader: { 
+    flexDirection: 'row', 
+    justifyContent: 'space-between', 
+    alignItems: 'center', 
+    paddingHorizontal: 20,
+    paddingBottom: 20,
+    paddingTop: Platform.OS === 'ios' ? 60 : (StatusBar.currentHeight || 20) + 15,
+    borderBottomWidth: 1, 
+    borderBottomColor: '#F1F5F9',
+    backgroundColor: 'white',
+    zIndex: 10,
+  },
+  mapHeaderTitle: { fontSize: 16, fontWeight: 'bold', color: '#1E293B' },
+  mapHeaderSub: { fontSize: 10, color: '#94A3B8', marginTop: 2 },
+  closeMapButton: { 
+    padding: 10, 
+    backgroundColor: '#F1F5F9', 
+    borderRadius: 14,
+    zIndex: 20,
+  },
+  mapViewWrapper: { flex: 1, backgroundColor: '#F8FAFC' },
+  map: { width: '100%', height: '100%' },
+  customMarker: { backgroundColor: 'white', padding: 8, borderRadius: 20, borderWidth: 2, borderColor: '#EF4444', shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 5, elevation: 3 },
+  mapLoading: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  mapFooter: { padding: 20, borderTopWidth: 1, borderTopColor: '#F1F5F9', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  distanceInfo: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  distanceText: { fontSize: 14, fontWeight: 'bold', color: '#334155' },
+  externalMapLink: { paddingHorizontal: 15, paddingVertical: 10, backgroundColor: '#F8FAFC', borderRadius: 12, borderWidth: 1, borderColor: '#E2E8F0' },
+  externalMapText: { color: '#3B82F6', fontWeight: 'bold', fontSize: 12 },
 });
+
 
 export default HomeScreen;
 
