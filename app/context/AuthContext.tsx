@@ -2,11 +2,21 @@ import { createContext, useContext, useEffect, useState } from "react";
 import axios from "axios";
 import * as SecureStore from "expo-secure-store";
 
+export interface UserProfile {
+    name: string;
+    hn: string;
+    detail_genaral: any; // หรือจะระบุละเอียดก็ได้
+    detail_medical: any;
+    family_patient: any;
+    addr: any;
+}
+
 interface AuthProps {
-    authState? : { token: string | null; authenticated: boolean | null};
+    authState? : { token: string | null; authenticated: boolean | null; user: UserProfile | null;};
     onRegister?: (phoneNumber: string, password: string) => Promise<any>;
     onLogin?: (phoneNumber: string, password: string) => Promise<any>;
     onLogout?: () => Promise<any>;
+    setUserData?: (data: UserProfile) => void;
 }
 
 const TOKEN_KEY = "my-jwt";
@@ -21,22 +31,24 @@ export const AuthProvider = ({ children }: any) => {
     const [authState, setAuthState] = useState<{ 
         token: string | null; 
         authenticated: boolean | null;
+        user: UserProfile | null;
     }>({
         token: null,
         authenticated: null,
+        user: null,
     });
 
     useEffect(() => {
         const loadToken = async () => {
 
             const token = await SecureStore.getItemAsync(TOKEN_KEY);    
-            console.log("stored:", token);
             if (token) {
                 axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
                 
                 setAuthState({
                     token: token,
                     authenticated: true,
+                    user: null,
                 });
             }
         };
@@ -53,11 +65,13 @@ export const AuthProvider = ({ children }: any) => {
     };
 
     const login = async (phoneNumber: string, password: string) => {
+        
         try {
             const result = await axios.post(`${API_URL}/login`, { phoneNumber, password });
-  
+
             // 1. ตรวจสอบว่ามี token หรือไม่
             const token = result.data.token;
+            
             if (!token) {
                 throw new Error("Token not found in response");
             }
@@ -66,6 +80,7 @@ export const AuthProvider = ({ children }: any) => {
             setAuthState({
                 token: token,
                 authenticated: true,
+                user: null,
             });
 
             // 3. ตั้งค่า Header สำหรับการเรียก API ครั้งต่อๆ ไป
@@ -80,9 +95,16 @@ export const AuthProvider = ({ children }: any) => {
             // จัดการ Error ให้ละเอียดขึ้น
             return { 
                 error: true, 
-                msg: e.response?.data?.message || e.message || "เกิดข้อผิดพลาดในการเชื่อมต่อ" 
+                message: e.response?.data?.message || e.message || "เกิดข้อผิดพลาดในการเชื่อมต่อ" 
             };
         }
+    };
+    
+    const setUserData = (data: UserProfile) => {
+        setAuthState((prev) => ({
+            ...prev,
+            user: data
+        }));
     };
 
     const logout = async () => {
@@ -98,6 +120,7 @@ export const AuthProvider = ({ children }: any) => {
             setAuthState({
                 token: null,
                 authenticated: false,
+                user: null,
             });
         }
     };
@@ -105,7 +128,8 @@ export const AuthProvider = ({ children }: any) => {
         authState,
         onRegister: register,
         onLogin: login,
-        onLogout: logout
+        onLogout: logout,
+        setUserData: setUserData
     };
 
     return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

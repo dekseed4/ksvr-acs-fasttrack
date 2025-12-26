@@ -41,13 +41,6 @@ const LoginScreen = () => {
   const [isSecure, setIsSecure] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
 
-  useEffect(() => {
-    const testCall = async () => {
-      const result = await axios.get(`${API_URL}/profile`);
-      console.log(result.data);
-    };
-    testCall();
-  }, []);
 
   const handleLogin = async () => {
     if (!phoneNumber || !password) {
@@ -61,7 +54,7 @@ const LoginScreen = () => {
     const result = await onLogin(phoneNumber, password);
 
     setIsLoading(false);
-
+    
     if (result && result.error) {
       // ถ้ามี Error (ตามที่ return มาจาก catch)
       Alert.alert('เข้าสู่ระบบไม่สำเร็จ', result.message);
