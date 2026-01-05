@@ -147,7 +147,7 @@ const HomeScreen = () => {
     
         try {
             const result = await axios.get(`${API_URL}/profile`);
-            console.log("Profile loaded:", result.data);
+            // console.log("Profile loaded:", result.data);
             setUserData(result.data.data);
         } catch (e) {
             console.error("Profile load failed:", e.message);
@@ -278,10 +278,11 @@ const HomeScreen = () => {
           
             // ส่งข้อมูลผ่าน Axios ไปยัง Laravel Server
             const response = await axios.post(`${API_URL}/user_location`, emergencyPayload);
-
+                
             if (response.status === 200 || response.status === 201) {
                 // เมื่อส่งสำเร็จ เปลี่ยนสถานะหน้าจอเพื่อเริ่มนับถอยหลัง
-                const emergencyId = response.data?.data?.id || response.data?.id;
+                const emergencyId = response.data?.data?.patient_id || response.data?.patient_id;
+                console.log("Emergency request created with ID:", emergencyId);
                 setActiveEmergencyId(emergencyId);
                 
                 setIsCalling(true);
@@ -478,7 +479,7 @@ const HomeScreen = () => {
                                 <View style={styles.statusPill}><Activity size={10} color="#EF4444" /><Text style={styles.statusPillText}>ACS Monitoring Active</Text></View>
                             </View>
                         </View>
-                        <ShieldCheck size={22} color="#94A3B8" />
+                        <ShieldCheck size={22} color="#4CAF50"/>
                     </View>
 
                     <View style={styles.profileQuickStats}>
@@ -588,7 +589,6 @@ const HomeScreen = () => {
                 </View>
             </ScrollView>
 
-            {/* --- Modals --- */}
             <Modal animationType="slide" transparent={true} visible={showSettingsModal} onRequestClose={() => setShowSettingsModal(false)}>
                 <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setShowSettingsModal(false)}>
                     <View style={styles.settingsModalContent}>
@@ -612,7 +612,13 @@ const HomeScreen = () => {
                         <TouchableOpacity onPress={() => setShowInAppMap(false)} hitSlop={{top:20, bottom:20, left:20, right:20}}><X size={26} color="#1E293B" /></TouchableOpacity>
                     </View>
                     {mapRegion ? (
-                        <MapView provider={PROVIDER_GOOGLE} style={{flex: 1}} initialRegion={mapRegion} showsUserLocation={true}>
+                        <MapView 
+                            // [FIX] ปรับปรุง Provider ให้ใช้ Native Map บน iOS (Apple Maps)
+                            provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined} 
+                            style={{flex: 1}} 
+                            initialRegion={mapRegion} 
+                            showsUserLocation={true}
+                        >
                             <Marker coordinate={currentLocation} title="คุณอยู่ที่นี่" />
                             <Marker coordinate={HOSPITAL_COORDS} title={HOSPITAL_COORDS.name} pinColor="#3B82F6" />
                         </MapView>
@@ -685,7 +691,7 @@ const styles = StyleSheet.create({
     checklistContainer: { marginTop: 25 },
     checklistHeader: { fontSize: 14, fontWeight: '900', color: '#1E293B', marginBottom: 15 },
     checkItem: { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
-    checkCircle: { width: 16, height: 16, borderRadius: 8, borderWidth: 2, borderColor: '#CBD5E1', marginRight: 10 },
+    checkCircle: { width: 16, height: 16, borderRadius: 8, borderWIdth: 2, borderColor: '#CBD5E1', marginRight: 10 },
     checkText: { fontSize: 12, color: '#475569' },
     cancelButton: { marginTop: 35, paddingVertical: 12, paddingHorizontal: 30, alignItems: 'center', alignSelf: 'center', zIndex: 10 },
     cancelButtonText: { color: '#94A3B8', fontSize: 13, textDecorationLine: 'underline', fontWeight: 'bold' },

@@ -14,7 +14,7 @@ import {
   Alert,
   Linking
 } from 'react-native';
-// Note: You need to install lucide-react-native in your project
+
 import { 
   Phone, 
   Lock, 
