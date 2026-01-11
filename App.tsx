@@ -9,6 +9,7 @@ import LoginScreen from './app/screens/LoginScreen';
 import HomeScreen from './app/screens/HomeScreen';
 import HospitalMapScreen from './app/screens/HospitalMapScreen';
 import KnowledgeScreen from './app/screens/KnowledgeScreen';
+import TermsConsentScreen from './app/screens/TermsConsentScreen';
 
 
 const Stack = createNativeStackNavigator();
@@ -71,18 +72,28 @@ export default function App() {
 export const Layout = () => {
     const { authState} = useAuth();
 
+   // 🔍 เพิ่มบรรทัดนี้เพื่อ Debug ดูค่าใน Terminal ว่ามันเป็น null หรือมีค่าแล้ว?
+    // console.log("Current User State:", JSON.stringify(authState?.user, null, 2));
+
+    // เช็คเงื่อนไข (ต้องมั่นใจว่า authState.user ไม่ใช่ null ก่อนเช็ค term_accepted_at)
+    const showConsentScreen = authState?.user && !authState.user.term_accepted_at;
+
     return (
         <NavigationContainer>
-            <Stack.Navigator screenOptions={{headerShown: false}}>{
-                authState?.authenticated ? 
-                   ( 
-                    <Stack.Screen name="AppTabs" component={AppTabs} ></Stack.Screen>
+            <Stack.Navigator screenOptions={{ headerShown: false }}>
+                {authState?.authenticated ? (
+                    // 🟢 กรณี: เข้าสู่ระบบแล้ว (Authenticated)
+                    showConsentScreen ? (
+                        // ⚠️ ถ้ายังไม่ยอมรับเงื่อนไข -> บังคับไปหน้า Consent
+                        <Stack.Screen name="TermsConsentScreen" component={TermsConsentScreen} />
+                    ) : (
+                        // ✅ ถ้ายอมรับแล้ว -> เข้าใช้งาน AppTabs ได้ตามปกติ
+                        <Stack.Screen name="AppTabs" component={AppTabs} />
                     )
-                :
-                    (
-                    <Stack.Screen name="Login" component={LoginScreen} ></Stack.Screen>
-                    )
-                }
+                ) : (
+                    // 🔴 กรณี: ยังไม่เข้าสู่ระบบ
+                    <Stack.Screen name="Login" component={LoginScreen} />
+                )}
             </Stack.Navigator>
         </NavigationContainer>
         );

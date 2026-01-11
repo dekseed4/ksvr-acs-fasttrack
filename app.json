@@ -14,7 +14,8 @@
     },
     "ios": {
       "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "แอปต้องการเข้าถึงตำแหน่งเพื่อส่งรถพยาบาลไปหาคุณ"
+        "NSLocationWhenInUseUsageDescription": "แอปต้องการเข้าถึงตำแหน่งเพื่อส่งรถพยาบาลไปหาคุณ",
+        "NSFaceIDUsageDescription": "ขออนุญาตใช้ FaceID เพื่อยืนยันตัวตนก่อนเข้าถึงข้อมูลสุขภาพส่วนบุคคล"
       },
       "bundleIdentifier": "com.ksvr.acsfasttrack",
       "buildNumber": "1.0.0",

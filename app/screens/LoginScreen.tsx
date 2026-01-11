@@ -28,40 +28,44 @@ import {
   Heart
 } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { API_URL, useAuth } from '../context/AuthContext';
-import axios from 'axios';
+import { useAuth } from '../context/AuthContext';
+import { useNavigation } from '@react-navigation/native';
 
 const { width } = Dimensions.get('window');
 
 const LoginScreen = () => {
   const [phoneNumber, setPhoneNumber] = useState('');
   const [password, setPassword] = useState('');
-  const { onLogin, onRegister } = useAuth();
+  const { onLogin } = useAuth();
 
   const [isSecure, setIsSecure] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
-
+  const navigation = useNavigation();
 
   const handleLogin = async () => {
-    if (!phoneNumber || !password) {
-      Alert.alert('แจ้งเตือน', 'กรุณากรอกข้อมูลให้ครบถ้วน');
-      return;
-    }
+      if (!phoneNumber || !password) {
+          Alert.alert('แจ้งเตือน', 'กรุณากรอกข้อมูลให้ครบถ้วน');
+          return;
+      }
 
-    setIsLoading(true);
-    
-    // เรียกใช้ฟังก์ชัน login จาก AuthContext (ซึ่งในโค้ดคุณใช้ชื่อ onLogin)
-    const result = await onLogin(phoneNumber, password);
+      setIsLoading(true);
+      
+      try {
+        // 1. เรียก onLogin (ในนี้มีการ update setAuthState แล้ว)
+        const result = await onLogin(phoneNumber, password);
+        
+        setIsLoading(false);
 
-    setIsLoading(false);
-    
-    if (result && result.error) {
-      // ถ้ามี Error (ตามที่ return มาจาก catch)
-      Alert.alert('เข้าสู่ระบบไม่สำเร็จ', result.message);
-    } else {
-      // ถ้าสำเร็จ (ปกติ Context จะเปลี่ยนหน้าให้เองตามสถานะ authenticated)
-      Alert.alert('สำเร็จ', 'ยินดีต้อนรับสู่ระบบ');
-    }
+        if (result && result.status) {
+          //  เช็คเงื่อนไข term_accepted_at
+        } else {
+          Alert.alert('เข้าสู่ระบบไม่สำเร็จ', result?.message || 'เบอร์โทรหรือรหัสผ่านไม่ถูกต้อง');
+        }
+
+      } catch (error) {
+        setIsLoading(false);
+        Alert.alert('ข้อผิดพลาด', 'ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้');
+      }
   };
 
   // SOS Emergency Call Function

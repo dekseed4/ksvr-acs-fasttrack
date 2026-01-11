@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import axios from "axios";
 import * as SecureStore from "expo-secure-store";
+import { Alert } from 'react-native';
 
 export interface UserProfile {
     name: string;
@@ -13,14 +14,13 @@ export interface UserProfile {
 
 interface AuthProps {
     authState? : { token: string | null; authenticated: boolean | null; user: UserProfile | null;};
-    onRegister?: (phoneNumber: string, password: string) => Promise<any>;
     onLogin?: (phoneNumber: string, password: string) => Promise<any>;
     onLogout?: () => Promise<any>;
     setUserData?: (data: UserProfile) => void;
 }
 
 const TOKEN_KEY = "my-jwt";
-export const API_URL = "https://ksvrhospital.go.th/krit-siwara_smart_heart/api";
+import { API_URL } from '../config';
 const AuthContext = createContext<AuthProps>({});
 
 export const useAuth = () => {
@@ -38,18 +38,77 @@ export const AuthProvider = ({ children }: any) => {
         user: null,
     });
 
+    // เพิ่ม useEffect ตัวใหม่ สำหรับดักจับ Error 401
+    useEffect(() => {
+        // สร้าง Interceptor
+        const interceptor = axios.interceptors.response.use(
+            response => response, // ถ้าสำเร็จ ปล่อยผ่าน
+            async (error) => {
+                // ถ้าเจอ Error 401 (Token หมดอายุ หรือ โดนดีดออก)
+                if (error.response?.status === 401) {
+                    
+                    // ป้องกันการ Loop logout ซ้ำๆ โดยเช็คว่าตอนนี้ Login อยู่ไหม
+                    const currentToken = await SecureStore.getItemAsync(TOKEN_KEY);
+                    if (currentToken) {
+                        console.log("Session expired or logged in on another device.");
+                        
+                        // แจ้งเตือนผู้ใช้
+                        Alert.alert(
+                            "หมดเวลาการใช้งาน", 
+                            "มีการเข้าสู่ระบบจากอุปกรณ์อื่น หรือเซสชั่นหมดอายุ กรุณาเข้าสู่ระบบใหม่",
+                            [{ text: "ตกลง" }]
+                        );
+
+                        // สั่ง Logout (ล้างค่าในเครื่อง)
+                        await SecureStore.deleteItemAsync(TOKEN_KEY);
+                        delete axios.defaults.headers.common["Authorization"];
+                        setAuthState({
+                            token: null,
+                            authenticated: false,
+                            user: null,
+                        });
+                    }
+                }
+                return Promise.reject(error);
+            }
+        );
+
+        // Cleanup function: ถอด interceptor เมื่อ component ถูกทำลาย
+        return () => {
+            axios.interceptors.response.eject(interceptor);
+        };
+    }, []); // ทำงานครั้งเดียวตอนเริ่มแอป
+    
     useEffect(() => {
         const loadToken = async () => {
-
-            const token = await SecureStore.getItemAsync(TOKEN_KEY);    
+            const token = await SecureStore.getItemAsync(TOKEN_KEY);
+            
             if (token) {
+                // 1. ตั้ง Header รอไว้เลย
                 axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
-                
-                setAuthState({
-                    token: token,
-                    authenticated: true,
-                    user: null,
-                });
+
+                try {
+                    // 2. ยิง API ขอข้อมูล User ล่าสุด (เพื่อดูว่า term_accepted_at มีค่าไหม)
+                    // หมายเหตุ: คุณต้องมี Route '/profile' หรือ '/me' ใน Laravel
+                    const userResponse = await axios.get(`${API_URL}/profile`); 
+                    
+                    setAuthState({
+                        token: token,
+                        authenticated: true,
+                        user: userResponse.data.data || userResponse.data, // เก็บ User ล่าสุด
+                    });
+
+                } catch (error) {
+                    // ถ้า Token หมดอายุ หรือยิงไม่ผ่าน ให้เคลียร์ทิ้ง
+                    console.log("Token expired or invalid");
+                    await SecureStore.deleteItemAsync(TOKEN_KEY);
+                    axios.defaults.headers.common["Authorization"] = "";
+                    setAuthState({
+                        token: null,
+                        authenticated: false,
+                        user: null,
+                    });
+                }
             }
         };
         loadToken();
@@ -64,35 +123,36 @@ export const AuthProvider = ({ children }: any) => {
 
     };
 
-    const login = async (phoneNumber: string, password: string) => {
-        
+    const login = async (phoneNumber, password) => {
         try {
             const result = await axios.post(`${API_URL}/login`, { phoneNumber, password });
 
-            // 1. ตรวจสอบว่ามี token หรือไม่
-            const token = result.data.token;
-            
+            // ดึงข้อมูลที่จำเป็นออกมาจาก response.data
+            const { token, user, require_consent } = result.data;
+
+            // 1. ตรวจสอบ Token
             if (!token) {
                 throw new Error("Token not found in response");
             }
 
-            // 2. อัปเดต State ภายในแอป
+            // 2. อัปเดต State (ใส่ข้อมูล user ลงไปด้วย)
             setAuthState({
                 token: token,
-                authenticated: true,
-                user: null,
+                authenticated: true, 
+                user: user || null, 
             });
 
-            // 3. ตั้งค่า Header สำหรับการเรียก API ครั้งต่อๆ ไป
+            // 3. ตั้งค่า Header
             axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
 
-            // 4. เก็บลง SecureStore (แนะนำให้ใช้ await เพื่อความชัวร์ก่อน return)
+            // 4. เก็บลง SecureStore
             await SecureStore.setItemAsync(TOKEN_KEY, token);
 
-            return result; // ส่งค่ากลับไปเพื่อให้หน้า Login จัดการ Alert ต่อ
+            // 5. [สำคัญ] ส่ง Data กลับไปให้ LoginScreen เช็ค require_consent
+            return result.data; 
 
-        } catch (e: any) {
-            // จัดการ Error ให้ละเอียดขึ้น
+        } catch (e) {
+            // จัดการ Error
             return { 
                 error: true, 
                 message: e.response?.data?.message || e.message || "เกิดข้อผิดพลาดในการเชื่อมต่อ" 
@@ -126,7 +186,7 @@ export const AuthProvider = ({ children }: any) => {
     };
     const value = {
         authState,
-        onRegister: register,
+        setAuthState,
         onLogin: login,
         onLogout: logout,
         setUserData: setUserData
