@@ -15,6 +15,7 @@ import {
   StatusBar,
   Image,
   Alert,
+  TouchableWithoutFeedback,
 } from 'react-native';
 
 import MapView, { Marker, PROVIDER_GOOGLE, Circle as MapCircle } from 'react-native-maps';
@@ -33,12 +34,15 @@ import {
   ShieldCheck,
   Info,
   ChevronRight,
+  ChevronLeft,
   Navigation,
   X,
   Settings,
   LogOut,
   Bell,
-  UserCircle
+  UserCircle,
+  FileText,
+  Lock
 } from 'lucide-react-native';
 
 import { API_URL, useAuth } from '../context/AuthContext';
@@ -62,12 +66,16 @@ const HomeScreen = () => {
     const [isCalling, setIsCalling] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false); // สถานะขณะส่งข้อมูลไปยัง Server
     const [showInAppMap, setShowInAppMap] = useState(false); // State สำหรับเปิด/ปิดแผนที่ในแอป
-    const [showSettingsModal, setShowSettingsModal] = useState(false); // State สำหรับป๊อปอัพตั้งค่า
+    
+    // --- Settings Modal State Management ---
+    const [showSettingsModal, setShowSettingsModal] = useState(false);
+    const [settingsView, setSettingsView] = useState('main'); // 'main' | 'terms' | 'privacy'
+
     const [secondsLeft, setSecondsLeft] = useState(0);
     const [pressProgress, setPressProgress] = useState(0);
     const [isPressing, setIsPressing] = useState(false);
-    
-    // --- [NEW] เก็บ ID รายการฉุกเฉินปัจจุบัน ---
+
+    // --- เก็บ ID รายการฉุกเฉินปัจจุบัน ---
     const [activeEmergencyId, setActiveEmergencyId] = useState(null);
 
     // --- Profile & Loading States ---
@@ -81,6 +89,7 @@ const HomeScreen = () => {
     const [isLocationLive, setIsLocationLive] = useState(false);
 
     // --- Refs & Animation ---
+    const mapRef = useRef(null);
     const timerRef = useRef(null);
     const countdownRef = useRef(null);
     const watchSubscription = useRef(null); 
@@ -88,7 +97,7 @@ const HomeScreen = () => {
     const scaleAnim = useRef(new Animated.Value(1)).current;
     const blinkAnim = useRef(new Animated.Value(0.4)).current; // สำหรับสถานะ Live GPS
 
-    const HOLD_DURATION = 3000; // 3 วินาที
+    const HOLD_DURATION = 1000; // 1 วินาที
     const radius = 90;
     const strokeWidth = 8;
     const circumference = 2 * Math.PI * radius;
@@ -127,11 +136,11 @@ const HomeScreen = () => {
                 case 'impactMedium': await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); break;
                 case 'selection': await Haptics.selectionAsync(); break;
                 case 'notificationSuccess': await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); break;
+                case 'notificationError': await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error); break;
                 default: await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
             }
-        } catch (e) {
+        } catch (e) {}
         // ป้องกัน Error บน Simulator หรือเครื่องที่ไม่มีระบบสั่น
-        }
     };
 
     // ฟังก์ชันสำหรับเปิดแผนที่เพื่อดูตำแหน่งปัจจุบัน
@@ -293,13 +302,8 @@ const HomeScreen = () => {
         } catch (error) {
         triggerHaptic('notificationError');
         console.error("Emergency call failed:", error.response?.data || error.message);
-        
+        Alert.alert("เกิดข้อผิดพลาด", "ไม่สามารถส่งพิกัดได้ กรุณาโทร 1669 ทันที");
         // แจ้งเตือนผู้ใช้กรณีส่งพิกัดไม่สำเร็จ
-        Alert.alert(
-            "เกิดข้อผิดพลาด",
-            "ไม่สามารถส่งพิกัดของคุณได้ กรุณาตรวจสอบอินเทอร์เน็ตหรือโทร 1669 ทันที",
-            [{ text: "ตกลง" }]
-        );
         } finally {
         setIsSubmitting(false);
         setPressProgress(0);
@@ -331,9 +335,11 @@ const HomeScreen = () => {
                             const emergency_id = activeEmergencyId;
                             console.log("Cancelling emergency ID:", emergency_id);
                             // ส่งข้อมูลยกเลิกไปยัง Laravel (ปรับ Endpoint ตาม API ของคุณ)
-                            await axios.post(`${API_URL}/emergency-requests/cancel`, 
-                                { emergency_id: activeEmergencyId }
-                            );
+                            await axios.post(`${API_URL}/emergency-requests/cancel`, {
+                                emergency_id: activeEmergencyId
+                            }, {
+                                headers: { 'Authorization': `Bearer ${authState?.token}` }
+                            });
                             
                             // ล้างสถานะเมื่อสำเร็จ
                             setActiveEmergencyId(null);
@@ -436,10 +442,224 @@ const HomeScreen = () => {
         };
     }, [currentLocation]);
 
+    // Auto Fit Map
+    useEffect(() => {
+        if (showInAppMap && currentLocation && mapRef.current) {
+            mapRef.current.fitToCoordinates(
+                [
+                    { latitude: currentLocation.latitude, longitude: currentLocation.longitude },
+                    { latitude: HOSPITAL_COORDS.latitude, longitude: HOSPITAL_COORDS.longitude }
+                ],
+                {
+                    edgePadding: { top: 100, right: 50, bottom: 100, left: 50 }, // เว้นระยะขอบเพื่อให้เห็น Marker ชัดเจน
+                    animated: true,
+                }   
+            );
+        }
+    }, [currentLocation, showInAppMap]);
+
     // --- Helpers ---
     const strokeDashoffset = circumference - (pressProgress / 100) * circumference;
 
-    // แสดงตัวโหลดข้อมูลถ้ายังดึงข้อมูลไม่เสร็จ
+    // --- Render Content for Settings Modal ---
+    const renderSettingsContent = () => {
+        if (settingsView === 'terms') {
+            return (
+                <>
+                    <View style={styles.modalHeaderRow}>
+                        <TouchableOpacity onPress={() => setSettingsView('main')} style={styles.headerBackButton}>
+                            <ChevronLeft size={24} color="#1E293B" />
+                        </TouchableOpacity>
+                        <Text style={styles.modalTitle}>ข้อกำหนดการใช้บริการ</Text>
+                        <TouchableOpacity onPress={() => setShowSettingsModal(false)}><X size={24} color="#94A3B8" /></TouchableOpacity>
+                    </View>
+                    <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={styles.termsContent}>
+                        <Text style={styles.termsHeading}>ข้อกำหนดและเงื่อนไขการใช้บริการ</Text>
+                        <Text style={[styles.termsText, { marginBottom: 15, fontStyle: 'italic', textAlign: 'center' }]}>
+                            แอปพลิเคชัน: KSVR ACS Fasttrack{'\n'}ฉบับปรับปรุงล่าสุด: 10 มกราคม 2569
+                        </Text>
+
+                        <Text style={styles.termsHeading}>1. บทนิยาม</Text>
+                        <Text style={styles.termsText}>
+                            "ผู้ให้บริการ" หมายถึง [ชื่อโรงพยาบาล/หน่วยงาน KSVR], ทีมผู้พัฒนาแอปพลิเคชัน และบุคลากรทางการแพทย์ที่เกี่ยวข้อง{'\n'}
+                            "ผู้ใช้บริการ" หมายถึง ผู้ป่วย ญาติผู้ป่วย หรือบุคคลทั่วไปที่ลงทะเบียนเข้าใช้งานแอปพลิเคชันนี้{'\n'}
+                            "บริการ" หมายถึง การใช้งานแอปพลิเคชันเพื่อแจ้งเหตุฉุกเฉินทางสุขภาพ ส่งพิกัดตำแหน่ง และส่งข้อมูลสุขภาพเบื้องต้น
+                        </Text>
+
+                        <Text style={styles.termsHeading}>2. การยอมรับข้อตกลง</Text>
+                        <Text style={styles.termsText}>
+                            การที่ท่านดาวน์โหลด ติดตั้ง และสมัครเข้าใช้งานแอปพลิเคชันนี้ ถือว่าท่านได้อ่าน เข้าใจ และตกลงยอมรับข้อกำหนดและเงื่อนไขฉบับนี้โดยสมบูรณ์ หากท่านไม่ยอมรับเงื่อนไขส่วนหนึ่งส่วนใด กรุณายุติการใช้งานทันที
+                        </Text>
+
+                        <Text style={styles.termsHeading}>3. ขอบเขตการให้บริการและข้อจำกัด (สำคัญมาก)</Text>
+                        <Text style={styles.termsText}>
+                            3.1 แอปพลิเคชันนี้เป็น "ช่องทางเสริม" ในการแจ้งเหตุฉุกเฉินสำหรับผู้ป่วยกลุ่มเสี่ยง (โดยเฉพาะกลุ่มโรคหัวใจและหลอดเลือด ACS) เพื่อความรวดเร็วในการระบุพิกัดและข้อมูลพื้นฐานเท่านั้น{'\n'}
+                            3.2 ไม่รับประกันผลลัพธ์: ผู้ให้บริการไม่สามารถรับประกันได้ว่ารถพยาบาลจะเดินทางไปถึงภายในเวลาที่กำหนดได้ทุกกรณี เนื่องจากขึ้นอยู่กับปัจจัยภายนอก เช่น สภาพการจราจร, สภาพอากาศ, ระยะทาง หรือเหตุสุดวิสัยอื่นๆ{'\n'}
+                            3.3 กรณีระบบขัดข้อง: ในกรณีที่แอปพลิเคชันไม่ตอบสนอง, ไม่มีสัญญาณอินเทอร์เน็ต หรือระบบ GPS คลาดเคลื่อน ผู้ใช้บริการต้องโทรแจ้งสายด่วน 1669 ทันที อย่ารอการตอบกลับจากแอปพลิเคชันเพียงอย่างเดียว
+                        </Text>
+
+                        <Text style={styles.termsHeading}>4. หน้าที่และความรับผิดชอบของผู้ใช้บริการ</Text>
+                        <Text style={styles.termsText}>
+                            4.1 ความถูกต้องของข้อมูล: ท่านตกลงที่จะให้ข้อมูลที่เป็นจริง เป็นปัจจุบัน และครบถ้วน โดยเฉพาะข้อมูลประวัติการแพ้ยา โรคประจำตัว และข้อมูลติดต่อฉุกเฉิน เพื่อความปลอดภัยในการรักษาของท่านเอง{'\n'}
+                            4.2 การใช้งานพิกัด (Location): ท่านยินยอมให้แอปพลิเคชันเข้าถึงและส่งข้อมูลพิกัดตำแหน่ง (GPS Location) ของท่านไปยังศูนย์สั่งการ เมื่อมีการกดปุ่มขอความช่วยเหลือ{'\n'}
+                            4.3 การรักษาความปลอดภัยบัญชี: ท่านต้องเก็บรักษารหัสผ่าน (Password) หรือรหัสยืนยันตัวตน (OTP) ไว้เป็นความลับ การกระทำใดๆ ผ่านบัญชีของท่านถือว่าเป็นการกระทำของท่านเอง{'\n'}
+                            4.4 ห้ามแจ้งเหตุเท็จ: ห้ามใช้งานแอปพลิเคชันเพื่อก่อกวน กลั่นแกล้ง หรือแจ้งเหตุอันเป็นเท็จ หากตรวจพบ ผู้ให้บริการขอสงวนสิทธิ์ในการระงับการใช้งานถาวรและดำเนินคดีตามกฎหมาย
+                        </Text>
+                        
+                        <View style={{height: 40}} />
+                    </ScrollView>
+                </>
+            );
+        } else if (settingsView === 'privacy') {
+            return (
+                <>
+                    <View style={styles.modalHeaderRow}>
+                        <TouchableOpacity onPress={() => setSettingsView('main')} style={styles.headerBackButton}>
+                            <ChevronLeft size={24} color="#1E293B" />
+                        </TouchableOpacity>
+                        <Text style={styles.modalTitle}>นโยบายความเป็นส่วนตัว</Text>
+                        <TouchableOpacity onPress={() => setShowSettingsModal(false)}><X size={24} color="#94A3B8" /></TouchableOpacity>
+                    </View>
+                    <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={styles.termsContent}>
+                        <Text style={styles.termsHeading}>นโยบายความเป็นส่วนตัว (Privacy Policy)</Text>
+                        <Text style={[styles.termsText, { marginBottom: 15, fontStyle: 'italic', textAlign: 'center' }]}>
+                            แอปพลิเคชัน: KSVR ACS Fasttrack{'\n'}ฉบับปรับปรุงล่าสุด: 10 มกราคม 2569
+                        </Text>
+
+                        <Text style={styles.termsHeading}>1. บทนำ</Text>
+                        <Text style={styles.termsText}>
+                            รพ.ค่ายกฤษณ์สีวะรา ("ผู้ให้บริการ") ตระหนักถึงความสำคัญของการคุ้มครองข้อมูลส่วนบุคคลของท่าน เราจึงจัดทำนโยบายความเป็นส่วนตัวฉบับนี้ขึ้น เพื่อแจ้งให้ท่านทราบถึงรายละเอียดการเก็บรวบรวม ใช้ และเปิดเผยข้อมูลส่วนบุคคลของท่าน ตามพระราชบัญญัติคุ้มครองข้อมูลส่วนบุคคล พ.ศ. 2562 (PDPA)
+                        </Text>
+
+                        <Text style={styles.termsHeading}>2. ข้อมูลที่เราเก็บรวบรวม</Text>
+                        <Text style={styles.termsText}>
+                            เพื่อให้แอปพลิเคชันทำงานได้อย่างเต็มประสิทธิภาพในการช่วยเหลือฉุกเฉิน เราจำเป็นต้องเก็บรวบรวมข้อมูลดังต่อไปนี้:{'\n'}
+                            2.1 ข้อมูลยืนยันตัวตน: ชื่อ-นามสกุล, เลขประจำตัวประชาชน (CID), หมายเลขโรงพยาบาล (HN), วันเดือนปีเกิด และเบอร์โทรศัพท์{'\n'}
+                            2.2 ข้อมูลสุขภาพ (Sensitive Data): หมู่เลือด, โรคประจำตัว, ประวัติการแพ้ยา, ประวัติการรักษา, ข้อมูลการตรวจสุขภาพ (Check-up), และสถานะความเสี่ยงโรคหัวใจและหลอดเลือด{'\n'}
+                            2.3 ข้อมูลตำแหน่ง (Location Data): พิกัดตำแหน่งปัจจุบัน (Latitude/Longitude) ของท่านแบบเรียลไทม์ เมื่อมีการใช้งานฟังก์ชันแจ้งเหตุฉุกเฉิน
+                        </Text>
+
+                        <Text style={styles.termsHeading}>3. วัตถุประสงค์การใช้ข้อมูล (สำคัญ)</Text>
+                        <Text style={styles.termsText}>
+                            เราเก็บรวบรวมข้อมูลของท่านเพื่อวัตถุประสงค์หลัก ดังนี้:{'\n'}
+                            - เพื่อการช่วยเหลือฉุกเฉิน (Vital Interest): ใช้พิกัดตำแหน่งในการส่งรถพยาบาลไปยังจุดเกิดเหตุ และใช้ข้อมูลสุขภาพเพื่อให้ทีมแพทย์เตรียมการรักษาได้ทันท่วงทีระหว่างนำส่งโรงพยาบาล{'\n'}
+                            - เพื่อการบริการทางการแพทย์: เพื่อยืนยันตัวตนผู้ป่วยและดึงประวัติการรักษาเดิมมาประกอบการวินิจฉัย{'\n'}
+                            - เพื่อการพัฒนาบริการ: นำข้อมูลสถิติ (ที่ไม่ระบุตัวตน) ไปวิเคราะห์เพื่อปรับปรุงระบบการแพทย์ฉุกเฉิน
+                        </Text>
+
+                        <Text style={styles.termsHeading}>4. ฐานกฎหมายในการประมวลผลข้อมูล</Text>
+                        <Text style={styles.termsText}>
+                            เราประมวลผลข้อมูลของท่านภายใต้ฐานกฎหมายต่อไปนี้:{'\n'}
+                            - ฐานความยินยอม (Consent): สำหรับการเก็บข้อมูลสุขภาพและพิกัดตำแหน่ง{'\n'}
+                            - ฐานป้องกันหรือระงับอันตรายต่อชีวิต (Vital Interest): ในกรณีฉุกเฉินที่ท่านอาจไม่สามารถให้ความยินยอมได้ในขณะนั้น เพื่อประโยชน์ในการช่วยชีวิตท่าน{'\n'}
+                            - ฐานภารกิจของรัฐ/สาธารณประโยชน์ (Public Task): (กรณีผู้ให้บริการเป็นหน่วยงานรัฐ/โรงพยาบาลรัฐ)
+                        </Text>
+
+                        <Text style={styles.termsHeading}>5. การเปิดเผยข้อมูล</Text>
+                        <Text style={styles.termsText}>
+                            ข้อมูลของท่านจะถูกเปิดเผยเฉพาะกับบุคคลที่เกี่ยวข้องกับการช่วยเหลือชีวิตเท่านั้น ได้แก่:{'\n'}
+                            - ทีมแพทย์และพยาบาลห้องฉุกเฉิน (ER){'\n'}
+                            - เจ้าหน้าที่กู้ชีพและพนักงานขับรถพยาบาล{'\n'}
+                            - ศูนย์สั่งการการแพทย์ฉุกเฉิน
+                        </Text>
+
+                        <Text style={styles.termsHeading}>6. มาตรการความปลอดภัย</Text>
+                        <Text style={styles.termsText}>
+                            เรามีมาตรการรักษาความปลอดภัยที่เข้มงวด ทั้งทางเทคนิคและการบริหารจัดการ เพื่อป้องกันไม่ให้ข้อมูลของท่านสูญหาย หรือถูกเข้าถึงโดยไม่ได้รับอนุญาต (เช่น การเข้ารหัสข้อมูล, การยืนยันตัวตนผ่านระบบ Token)
+                        </Text>
+
+                        <Text style={styles.termsHeading}>7. ระยะเวลาการเก็บรักษาข้อมูล</Text>
+                        <Text style={styles.termsText}>
+                            เราจะเก็บรักษาข้อมูลของท่านไว้ตลอดระยะเวลาที่ท่านยังคงมีบัญชีผู้ใช้งาน หรือตามระยะเวลาที่กฎหมายทางการแพทย์กำหนด (เช่น กฎหมายสถานพยาบาล)
+                        </Text>
+
+                        <Text style={styles.termsHeading}>8. สิทธิของเจ้าของข้อมูล</Text>
+                        <Text style={styles.termsText}>
+                            ท่านมีสิทธิในการขอเข้าถึง, ขอรับสำเนา, ขอแก้ไขข้อมูลให้ถูกต้อง, หรือขอลบข้อมูลของท่านออกจากระบบ ได้โดยการติดต่อเจ้าหน้าที่ผ่านช่องทางที่กำหนด
+                        </Text>
+
+                        <Text style={styles.termsHeading}>9. ช่องทางการติดต่อ</Text>
+                        <Text style={styles.termsText}>
+                            หากท่านมีข้อสงสัยเกี่ยวกับนโยบายความเป็นส่วนตัวนี้ สามารถติดต่อได้ที่:{'\n'}
+                            หน่วยงาน: รพ.ค่ายกฤษณ์สีวะรา{'\n'}
+                            ที่อยู่: [ที่อยู่หน่วยงาน]{'\n'}
+                            เบอร์โทรศัพท์: [เบอร์โทรศัพท์ติดต่อ]{'\n'}
+                            อีเมล: [อีเมลติดต่อ]
+                        </Text>
+                        
+                        <View style={{height: 40}} />
+                    </ScrollView>
+                </>
+            );
+        }
+
+        // Default: Main Settings Menu
+        return (
+            <>
+                <View style={styles.modalHeaderRow}>
+                    <Text style={styles.modalTitle}>ตั้งค่า</Text>
+                    <TouchableOpacity onPress={() => setShowSettingsModal(false)}><X size={24} color="#94A3B8" /></TouchableOpacity>
+                </View>
+
+                {/* Removed ScrollView from Main Settings as requested */}
+                <View style={{ width: '100%' }}>
+                    {/* Medical Profile Card */}
+                    <View style={styles.medicalCard}>
+                        <View style={styles.medicalHeader}>
+                            <View style={styles.medicalAvatar}><User size={30} color="white" /></View>
+                            <View style={{flex: 1}}>
+                                <Text style={styles.medicalName}>{user?.name || 'ไม่ระบุชื่อ'}</Text>
+                                <Text style={styles.medicalHN}>HN: {user?.username || '-'}</Text>
+                            </View>
+                        </View>
+                        <View style={styles.medicalGrid}>
+                            <View style={styles.medicalItem}>
+                                <Text style={styles.medicalLabel}>กรุ๊ปเลือด</Text>
+                                <Text style={styles.medicalValueRed}>{user?.detail_medical?.blood_type || '-'}</Text>
+                            </View>
+                            <View style={styles.medicalLine} />
+                            <View style={styles.medicalItem}>
+                                <Text style={styles.medicalLabel}>อายุ</Text>
+                                <Text style={styles.medicalValue}>{user?.detail_genaral?.age ? `${user.detail_genaral.age} ปี` : '-'}</Text>
+                            </View>
+                            <View style={styles.medicalLine} />
+                            <View style={styles.medicalItem}>
+                                <Text style={styles.medicalLabel}>โรคประจำตัว</Text>
+                                <Text style={styles.medicalValue} numberOfLines={1}>ACS</Text>
+                            </View>
+                        </View>
+                        <View style={styles.allergyBox}>
+                            <View style={{flexDirection: 'row', alignItems: 'center', marginBottom: 5}}>
+                                <AlertTriangle size={16} color="#F59E0B" />
+                                <Text style={styles.allergyTitle}> ประวัติการแพ้ยา</Text>
+                            </View>
+                            <Text style={styles.allergyText}>{user?.detail_medical?.drug_allergy || 'ไม่มีประวัติการแพ้ยา'}</Text>
+                        </View>
+                    </View>
+
+                    <View style={styles.menuSection}>
+                        <TouchableOpacity style={styles.menuItem} onPress={() => setSettingsView('terms')}>
+                            <FileText size={20} color="#3B82F6" />
+                            <Text style={styles.menuItemText}>ข้อกำหนดการใช้บริการ</Text>
+                            <ChevronRight size={16} color="#CBD5E1" />
+                        </TouchableOpacity>
+
+                        <TouchableOpacity style={styles.menuItem} onPress={() => setSettingsView('privacy')}>
+                            <Lock size={20} color="#10B981" />
+                            <Text style={styles.menuItemText}>นโยบายความเป็นส่วนตัว</Text>
+                            <ChevronRight size={16} color="#CBD5E1" />
+                        </TouchableOpacity>
+
+                        <TouchableOpacity style={styles.logoutButton} onPress={() => { setShowSettingsModal(false); onLogout(); }}>
+                            <LogOut size={20} color="#EF4444" />
+                            <Text style={styles.logoutText}>ออกจากระบบ</Text>
+                        </TouchableOpacity>
+                    </View>
+                </View>
+            </>
+        );
+    };
+
     if (loading) {
         return (
             <View style={styles.loadingContainer}>
@@ -460,7 +680,7 @@ const HomeScreen = () => {
                 </View>
                 <TouchableOpacity 
                     style={styles.settingsIconButton}
-                    onPress={() => setShowSettingsModal(true)}
+                    onPress={() => { setSettingsView('main'); setShowSettingsModal(true); }}
                 >
                     <Settings size={20} color="#94A3B8" />
                 </TouchableOpacity>
@@ -472,23 +692,43 @@ const HomeScreen = () => {
             >
                 <View style={styles.unifiedCard}>
                     <View style={styles.profileTopRow}>
-                        <View style={styles.profileInfoMain}>
-                            <View style={styles.avatarCircle}><User size={28} color="#EF4444" /></View>
+                        <TouchableOpacity 
+                            style={styles.profileInfoMain} 
+                            onPress={() => { setSettingsView('main'); setShowSettingsModal(true); }}
+                            activeOpacity={0.7}
+                        >
+                            <View style={styles.avatarContainer}>
+                                <View style={styles.avatarCircle}><User size={28} color="#EF4444" /></View>
+                                <View style={styles.onlineBadge} />
+                            </View>
                             <View style={styles.nameContainer}>
                                 <Text style={styles.patientName}>{user?.name || 'ไม่ระบุชื่อ'}</Text>
-                                <View style={styles.statusPill}><Activity size={10} color="#EF4444" /><Text style={styles.statusPillText}>ACS Monitoring Active</Text></View>
+                                {/* เปลี่ยนจาก ACS Monitoring เป็น HN */}
+                                <View style={styles.statusPill}>
+                                    <Text style={styles.statusPillText}>HN: {user?.username || '-'}</Text>
+                                </View>
                             </View>
-                        </View>
-                        <ShieldCheck size={22} color="#4CAF50"/>
+                        </TouchableOpacity>
+                        <TouchableOpacity style={styles.medicalIdButton} onPress={() => { setSettingsView('main'); setShowSettingsModal(true); }}>
+                            <ShieldCheck size={22} color="#94A3B8" />
+                        </TouchableOpacity>
                     </View>
 
-                    <View style={styles.profileQuickStats}>
+                    <TouchableOpacity 
+                        style={styles.profileQuickStats}
+                        onPress={() => { setSettingsView('main'); setShowSettingsModal(true); }}
+                        activeOpacity={0.7}
+                    >
                         <View style={styles.statBox}><Text style={styles.statLabel}>เลือด</Text><Text style={styles.statValueRed}>{user?.detail_medical?.blood_type || '-'}</Text></View>
                         <View style={styles.statDivider} />
                         <View style={styles.statBox}><Text style={styles.statLabel}>อายุ</Text><Text style={styles.statValue}>{user?.detail_genaral?.age || '-'}</Text></View>
                         <View style={styles.statDivider} />
-                        <View style={styles.statBox}><Text style={styles.statLabel}>ระยะห่าง</Text><Text style={styles.statValue}>{distance} กม.</Text></View>
-                    </View>
+                        {/* เปลี่ยนจาก โรคประจำตัว เป็น แพ้ยา */}
+                        <View style={styles.statBox}>
+                            <Text style={styles.statLabel}>แพ้ยา</Text>
+                            <Text style={styles.statValue} numberOfLines={1}>{user?.detail_medical?.drug_allergy || '-'}</Text>
+                        </View>
+                    </TouchableOpacity>
 
                     <TouchableOpacity onPress={openInMaps} activeOpacity={0.7} style={styles.locationIntegrator}>
                         <View style={styles.locationHeaderRow}>
@@ -537,7 +777,7 @@ const HomeScreen = () => {
                                 <AlertTriangle size={16} color="#B45309" />
                                 <View style={styles.alertTextContainer}>
                                     <Text style={styles.alertTitle}>{isSubmitting ? 'กำลังส่งพิกัด...' : 'Hold to Confirm'}</Text>
-                                    <Text style={styles.alertSubtitle}>กดค้าง 3 วินาทีเพื่อเรียกรถกู้ชีพ</Text>
+                                    <Text style={styles.alertSubtitle}>กดค้าง 1 วินาทีเพื่อเรียกรถกู้ชีพ</Text>
                                 </View>
                             </View>
                         </>
@@ -589,19 +829,24 @@ const HomeScreen = () => {
                 </View>
             </ScrollView>
 
+            {/* --- Unified Settings Modal (In-Modal Navigation) --- */}
             <Modal animationType="slide" transparent={true} visible={showSettingsModal} onRequestClose={() => setShowSettingsModal(false)}>
-                <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setShowSettingsModal(false)}>
-                    <View style={styles.settingsModalContent}>
+                <View style={styles.modalOverlay}>
+                    {/* [NEW] ใช้ TouchableWithoutFeedback แทน TouchableOpacity เพื่อแก้ปัญหาการแย่ง Touch */}
+                    <TouchableWithoutFeedback onPress={() => setShowSettingsModal(false)}>
+                        <View style={StyleSheet.absoluteFill} />
+                    </TouchableWithoutFeedback>
+                    <View style={[
+                        styles.settingsModalContent, 
+                        (settingsView === 'terms' || settingsView === 'privacy') && { height: '85%' }
+                    ]}>
                         <View style={styles.modalHandle} />
-                        <Text style={styles.modalTitle}>ตั้งค่า</Text>
-                        <TouchableOpacity style={styles.menuItem} onPress={() => { setShowSettingsModal(false); onLogout(); }}>
-                            <LogOut size={20} color="#EF4444" />
-                            <Text style={styles.logoutText}>ออกจากระบบ</Text>
-                        </TouchableOpacity>
+                        {renderSettingsContent()}
                     </View>
-                </TouchableOpacity>
+                </View>
             </Modal>
 
+            {/* --- In-App Map Modal --- */}
             <Modal animationType="slide" transparent={false} visible={showInAppMap} onRequestClose={() => setShowInAppMap(false)}>
                 <View style={styles.mapModalContainer}>
                     <View style={styles.mapHeader}>
@@ -613,11 +858,11 @@ const HomeScreen = () => {
                     </View>
                     {mapRegion ? (
                         <MapView 
-                            // [FIX] ปรับปรุง Provider ให้ใช้ Native Map บน iOS (Apple Maps)
                             provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined} 
                             style={{flex: 1}} 
                             initialRegion={mapRegion} 
                             showsUserLocation={true}
+                            ref={mapRef}
                         >
                             <Marker coordinate={currentLocation} title="คุณอยู่ที่นี่" />
                             <Marker coordinate={HOSPITAL_COORDS} title={HOSPITAL_COORDS.name} pinColor="#3B82F6" />
@@ -642,11 +887,14 @@ const styles = StyleSheet.create({
     unifiedCard: { backgroundColor: 'white', marginHorizontal: 20, marginTop: 5, padding: 20, borderRadius: 35, elevation: 4, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 10 },
     profileTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
     profileInfoMain: { flexDirection: 'row', alignItems: 'center', flex: 1 },
+    avatarContainer: { position: 'relative', marginRight: 15 },
     avatarCircle: { width: 50, height: 50, borderRadius: 18, backgroundColor: '#FEF2F2', justifyContent: 'center', alignItems: 'center' },
+    onlineBadge: { position: 'absolute', bottom: -2, right: -2, width: 14, height: 14, borderRadius: 7, backgroundColor: '#22C55E', borderWidth: 2, borderColor: 'white' },
     nameContainer: { marginLeft: 15 },
     patientName: { fontSize: 18, fontWeight: 'bold', color: '#1E293B' },
     statusPill: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FEF2F2', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 20, marginTop: 4 },
     statusPillText: { fontSize: 9, fontWeight: 'bold', color: '#EF4444', marginLeft: 4 },
+    medicalIdButton: { width: 42, height: 42, borderRadius: 16, backgroundColor: '#F8FAFC', justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: '#F1F5F9' },
     profileQuickStats: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 15, borderTopWidth: 1, borderTopColor: '#F8FAFC' },
     statBox: { alignItems: 'center', flex: 1 },
     statLabel: { fontSize: 9, fontWeight: '900', color: '#94A3B8', marginBottom: 4 },
@@ -670,7 +918,7 @@ const styles = StyleSheet.create({
     sosButtonActive: { backgroundColor: '#991B1B' },
     sosButtonDisabled: { backgroundColor: '#F87171' },
     sosText: { color: 'white', fontSize: 30, fontWeight: '900', marginTop: 4 },
-    alertCard: { flexDirection: 'row', backgroundColor: '#FFFBEB', marginHorizontal: 24, marginTop: 40, padding: 14, borderRadius: 20, alignItems: 'center' },
+    alertCard: { flexDirection: 'row', backgroundColor: '#FFFBEB', marginHorizontal: 24, marginTop: 15, padding: 14, borderRadius: 20, alignItems: 'center', borderWidth: 1, borderColor: '#FEF3C7' },
     alertTextContainer: { marginLeft: 12 },
     alertTitle: { fontSize: 12, fontWeight: 'bold', color: '#92400E' },
     alertSubtitle: { fontSize: 11, color: '#B45309' },
@@ -695,18 +943,82 @@ const styles = StyleSheet.create({
     checkText: { fontSize: 12, color: '#475569' },
     cancelButton: { marginTop: 35, paddingVertical: 12, paddingHorizontal: 30, alignItems: 'center', alignSelf: 'center', zIndex: 10 },
     cancelButtonText: { color: '#94A3B8', fontSize: 13, textDecorationLine: 'underline', fontWeight: 'bold' },
+    
     modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-    settingsModalContent: { backgroundColor: 'white', padding: 25, borderTopLeftRadius: 30, borderTopRightRadius: 30 },
-    modalHandle: { width: 40, height: 5, backgroundColor: '#E2E8F0', alignSelf: 'center', borderRadius: 5, marginBottom: 15 },
-    modalTitle: { fontSize: 20, fontWeight: 'bold', marginBottom: 20 },
-    menuItem: { flexDirection: 'row', alignItems: 'center', padding: 15, backgroundColor: '#FEF2F2', borderRadius: 15 },
-    logoutText: { marginLeft: 10, color: '#EF4444', fontWeight: 'bold' },
+    settingsModalContent: { backgroundColor: 'white', padding: 25, borderTopLeftRadius: 35, borderTopRightRadius: 35, maxHeight: '85%' },
+    modalHandle: { width: 50, height: 5, backgroundColor: '#E2E8F0', alignSelf: 'center', borderRadius: 5, marginBottom: 20 },
+    modalHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+    modalTitle: { fontSize: 20, fontWeight: '900', color: '#1E293B' },
+    modalCloseIcon: { padding: 8, backgroundColor: '#F8FAFC', borderRadius: 12 },
+    
+    // Medical Card Styles
+    medicalCard: { backgroundColor: '#F8FAFC', borderRadius: 25, padding: 20, borderWidth: 1, borderColor: '#F1F5F9', marginBottom: 20 },
+    medicalHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 20 },
+    medicalAvatar: { width: 50, height: 50, borderRadius: 18, backgroundColor: '#EF4444', justifyContent: 'center', alignItems: 'center', marginRight: 15 },
+    medicalName: { fontSize: 18, fontWeight: 'bold', color: '#1E293B' },
+    medicalHN: { fontSize: 13, color: '#64748B', marginTop: 2 },
+    medicalGrid: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+    medicalItem: { alignItems: 'center', flex: 1 },
+    medicalLabel: { fontSize: 10, fontWeight: '900', color: '#94A3B8', marginBottom: 4 },
+    medicalValue: { fontSize: 14, fontWeight: 'bold', color: '#334155' },
+    medicalValueRed: { fontSize: 16, fontWeight: 'bold', color: '#EF4444' },
+    medicalLine: { width: 1, height: 25, backgroundColor: '#E2E8F0' },
+    allergyBox: { backgroundColor: '#FEF3C7', padding: 12, borderRadius: 15, borderWidth: 1, borderColor: '#FDE68A' },
+    allergyTitle: { fontSize: 12, fontWeight: 'bold', color: '#D97706' },
+    allergyText: { fontSize: 12, color: '#B45309', marginTop: 2, fontWeight: '500' },
+    
+    menuSection: { marginTop: 10 },
+    menuItem: { flexDirection: 'row', alignItems: 'center', padding: 15, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
+    menuItemText: { flex: 1, fontSize: 15, fontWeight: 'bold', color: '#334155', marginLeft: 15 },
+    logoutButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#FEF2F2', paddingVertical: 16, borderRadius: 20, marginTop: 20, gap: 10 },
+    logoutText: { fontSize: 15, fontWeight: 'bold', color: '#EF4444' },
+    
+    termsHeading: { fontSize: 16, fontWeight: 'bold', color: '#1E293B', marginTop: 15, marginBottom: 8 },
+    termsText: { fontSize: 14, color: '#64748B', lineHeight: 22, textAlign: 'justify' },
+    termsContent: { padding: 20 },
+    
     mapModalContainer: { flex: 1, backgroundColor: 'white' },
     mapHeader: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 20, paddingBottom: 20, paddingTop: Platform.OS === 'ios' ? 60 : 40, alignItems: 'center', borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
     mapHeaderTitle: { fontSize: 18, fontWeight: 'bold' },
-    mapHeaderSub: { fontSize: 12, color: '#94A3B8' }
+    mapHeaderSub: { fontSize: 12, color: '#94A3B8' },
+    closeMapButton: { padding: 10, backgroundColor: '#F1F5F9', borderRadius: 14, zIndex: 20 },
+    mapViewWrapper: { flex: 1, backgroundColor: '#F8FAFC' },
+    map: { width: '100%', height: '100%' },
+    customMarker: { backgroundColor: 'white', padding: 8, borderRadius: 20, borderWidth: 2, borderColor: '#EF4444', shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 5, elevation: 3 },
+    mapLoading: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+    mapFooter: { padding: 20, borderTopWidth: 1, borderTopColor: '#F1F5F9', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+    distanceInfo: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+    distanceText: { fontSize: 14, fontWeight: 'bold', color: '#334155' },
+    externalMapLink: { paddingHorizontal: 15, paddingVertical: 10, backgroundColor: '#F8FAFC', borderRadius: 12, borderWidth: 1, borderColor: '#E2E8F0' },
+    externalMapText: { color: '#3B82F6', fontWeight: 'bold', fontSize: 12 },
+    
+    // Terms Styles (Updated for iOS Safe Area)
+    termsContainer: { flex: 1, backgroundColor: 'white' },
+    termsHeader: { 
+        flexDirection: 'row', 
+        justifyContent: 'space-between', 
+        alignItems: 'center',
+        paddingHorizontal: 20, 
+        paddingBottom: 20, 
+        // ปรับ Padding Top ให้รองรับ iOS Notch เหมือนหน้า Map
+        paddingTop: Platform.OS === 'ios' ? 60 : 20, 
+        borderBottomWidth: 1, 
+        borderBottomColor: '#F1F5F9', 
+        backgroundColor: 'white',
+        zIndex: 10 
+    },
+    termsTitle: { fontSize: 18, fontWeight: 'bold', color: '#1E293B' },
+    termsContent: { padding: 20 },
+    termsHeading: { fontSize: 16, fontWeight: 'bold', color: '#1E293B', marginTop: 15, marginBottom: 8 },
+    termsText: { fontSize: 14, color: '#64748B', lineHeight: 22, textAlign: 'justify' },
+    // เพิ่มสไตล์ปุ่มย้อนกลับให้เหมือนกับปุ่มปิดในหน้า Map
+    headerBackButton: {
+        padding: 10,
+        backgroundColor: '#F1F5F9',
+        borderRadius: 14,
+        zIndex: 20,
+    },
 });
-
 
 export default HomeScreen;
 
@@ -726,3 +1038,13 @@ export default HomeScreen;
 // 4. Live Indicator: เพิ่มสัญลักษณ์จุดสีเขียวกระพริบหน้า "ตำแหน่งปัจจุบัน" เพื่อบอกสถานะว่า GPS กำลังทำงานแบบเรียลไทม์
 
 // 5. Dynamic Distance & ETA: ระยะทางและเวลาเดินทางจะถูกคำนวณใหม่โดยอัตโนมัติทันทีที่ผู้ป่วยขยับตัวครับ
+
+// 6. Enhanced Error Handling: ปรับปรุงการจัดการข้อผิดพลาดในการดึงพิกัดและแสดงข้อความที่ชัดเจนยิ่งขึ้น
+
+// 7. UI/UX Improvements: ปรับปรุงดีไซน์บางส่วนให้ใช้งานง่ายและดูทันสมัยยิ่งขึ้น
+
+// 8. เพิ่ม Modal แสดง ข้อกำหนดการใช้บริการ (Terms of Service) ในหน้าตั้งค่า
+
+// 9. เพิ่ม Modal แสดง นโยบายความเป็นส่วนตัว (Privacy Policy) ในหน้าตั้งค่า
+
+// 10. การทำให้แผนที่ใน Modal ขยับตามพิกัดผู้ใช้แบบอัตโนมัติ (Live Map Camera) และ ปรับมุมกล้องให้เห็นทั้ง "เรา" และ "รพ." พร้อมกัน เพื่อให้เห็นระยะห่างจริง
