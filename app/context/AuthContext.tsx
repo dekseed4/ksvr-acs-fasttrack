@@ -17,6 +17,7 @@ interface AuthProps {
     onLogin?: (phoneNumber: string, password: string) => Promise<any>;
     onLogout?: () => Promise<any>;
     setUserData?: (data: UserProfile) => void;
+    isLoading?: boolean;
 }
 
 const TOKEN_KEY = "my-jwt";
@@ -28,6 +29,9 @@ export const useAuth = () => {
 };
 
 export const AuthProvider = ({ children }: any) => {
+
+    const [isLoading, setIsLoading] = useState(true);
+    
     const [authState, setAuthState] = useState<{ 
         token: string | null; 
         authenticated: boolean | null;
@@ -81,47 +85,40 @@ export const AuthProvider = ({ children }: any) => {
     
     useEffect(() => {
         const loadToken = async () => {
-            const token = await SecureStore.getItemAsync(TOKEN_KEY);
-            
-            if (token) {
-                // 1. ตั้ง Header รอไว้เลย
-                axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
+            try { // <--- ใส่ try-catch ครอบทั้งหมด
+                const token = await SecureStore.getItemAsync(TOKEN_KEY);
 
-                try {
-                    // 2. ยิง API ขอข้อมูล User ล่าสุด (เพื่อดูว่า term_accepted_at มีค่าไหม)
-                    // หมายเหตุ: คุณต้องมี Route '/profile' หรือ '/me' ใน Laravel
-                    const userResponse = await axios.get(`${API_URL}/profile`); 
-                    
-                    setAuthState({
-                        token: token,
-                        authenticated: true,
-                        user: userResponse.data.data || userResponse.data, // เก็บ User ล่าสุด
-                    });
+                if (token) {
+                    axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
 
-                } catch (error) {
-                    // ถ้า Token หมดอายุ หรือยิงไม่ผ่าน ให้เคลียร์ทิ้ง
-                    console.log("Token expired or invalid");
-                    await SecureStore.deleteItemAsync(TOKEN_KEY);
-                    axios.defaults.headers.common["Authorization"] = "";
-                    setAuthState({
-                        token: null,
-                        authenticated: false,
-                        user: null,
-                    });
+                    try {
+                        const userResponse = await axios.get(`${API_URL}/profile`);
+                        setAuthState({
+                            token: token,
+                            authenticated: true,
+                            user: userResponse.data.data || userResponse.data,
+                        });
+                    } catch (error) {
+                        console.log("Token expired or invalid");
+                        await SecureStore.deleteItemAsync(TOKEN_KEY);
+                        delete axios.defaults.headers.common["Authorization"];
+                        setAuthState({ token: null, authenticated: false, user: null });
+                    }
+                } else {
+                    // ถ้าไม่มี Token ก็เซ็ตให้ชัดเจน
+                    setAuthState({ token: null, authenticated: false, user: null });
                 }
+            } catch (e) {
+                console.error("SecureStore Error:", e);
+                setAuthState({ token: null, authenticated: false, user: null });
+            } finally {
+                // <--- 4. สำคัญที่สุด: โหลดเสร็จแล้ว (ไม่ว่าจะสำเร็จหรือล้มเหลว) ให้ปิด Loading
+                setIsLoading(false); 
             }
         };
+        
         loadToken();
     }, []);
-
-    const register = async (phoneNumber: string, password: string) => {
-        try {
-            return await axios.post(`${API_URL}/users`, { phoneNumber, password });
-        } catch (e) {
-            return { error: true, msg: (e as any).response?.data.message || "Registration failed" };
-        }
-
-    };
 
     const login = async (phoneNumber, password) => {
         try {
@@ -189,7 +186,8 @@ export const AuthProvider = ({ children }: any) => {
         setAuthState,
         onLogin: login,
         onLogout: logout,
-        setUserData: setUserData
+        setUserData: setUserData,
+        isLoading
     };
 
     return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

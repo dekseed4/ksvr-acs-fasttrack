@@ -3,14 +3,17 @@ import { AuthProvider, useAuth } from './app/context/AuthContext';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { Home, Map, BookOpen } from 'lucide-react-native';
+import { Home, Map, BookOpen, Heart } from 'lucide-react-native';
 
 import LoginScreen from './app/screens/LoginScreen';
 import HomeScreen from './app/screens/HomeScreen';
 import HospitalMapScreen from './app/screens/HospitalMapScreen';
 import KnowledgeScreen from './app/screens/KnowledgeScreen';
 import TermsConsentScreen from './app/screens/TermsConsentScreen';
-
+import { ThemeProvider } from './app/context/ThemeContext';
+import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
+import { AppText } from './app/components/AppText';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -63,20 +66,34 @@ function AppTabs() {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <Layout></Layout>
-    </AuthProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+        <AuthProvider>
+            <ThemeProvider>
+                <Layout></Layout>
+            </ThemeProvider>
+        </AuthProvider>
+    </GestureHandlerRootView>
   );
 }
 
 export const Layout = () => {
-    const { authState} = useAuth();
-
-   // 🔍 เพิ่มบรรทัดนี้เพื่อ Debug ดูค่าใน Terminal ว่ามันเป็น null หรือมีค่าแล้ว?
-    // console.log("Current User State:", JSON.stringify(authState?.user, null, 2));
+    const { authState, isLoading } = useAuth();
 
     // เช็คเงื่อนไข (ต้องมั่นใจว่า authState.user ไม่ใช่ null ก่อนเช็ค term_accepted_at)
     const showConsentScreen = authState?.user && !authState.user.term_accepted_at;
+
+    if (isLoading) {
+        return (
+           <View style={styles.loadingContainer}>
+                <View style={styles.loadingIconContainer}>
+                    <Heart size={80} color="#EF4444" fill="#FEF2F2" strokeWidth={1.5} />
+                </View>
+                <ActivityIndicator size="large" color="#EF4444" style={{ marginBottom: 20 }} />
+                <AppText style={styles.loadingTitle}>KSVR ACS</AppText>
+                <AppText style={styles.loadingText}>กำลังเตรียมระบบ...</AppText>
+            </View>
+        );
+    }
 
     return (
         <NavigationContainer>
@@ -98,3 +115,11 @@ export const Layout = () => {
         </NavigationContainer>
         );
 };
+
+const styles = StyleSheet.create({
+    loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#FFFFFF' },
+    loadingIconContainer: { marginBottom: 30, shadowColor: '#EF4444', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.2, shadowRadius: 20, elevation: 10 },
+    loadingTitle: { fontSize: 24, fontWeight: '900', color: '#1E293B', letterSpacing: 1 },
+    loadingText: { marginTop: 8, color: '#94A3B8', fontSize: 14, fontWeight: '500' }
+
+});

@@ -16,7 +16,18 @@ import {
   Image,
   Alert,
   TouchableWithoutFeedback,
+  TextInput,
+  PanResponder,
 } from 'react-native';
+
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { 
+  BottomSheetModal, 
+  BottomSheetModalProvider, 
+  BottomSheetBackdrop, 
+  BottomSheetScrollView,
+  BottomSheetView
+} from '@gorhom/bottom-sheet';
 
 import MapView, { Marker, PROVIDER_GOOGLE, Circle as MapCircle } from 'react-native-maps';
 import axios from 'axios';
@@ -24,6 +35,8 @@ import * as Location from 'expo-location';
 import * as Haptics from 'expo-haptics';
 import * as LocalAuthentication from 'expo-local-authentication';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { AppText } from '../components/AppText';
+import { useTheme, FONT_SCALES } from '../context/ThemeContext';
 
 import Svg, { Circle } from 'react-native-svg';
 import {
@@ -49,14 +62,25 @@ import {
   Phone,
   Pill,
   FileHeart, 
-  Contact
+  Contact,
+  Menu,
+  Calendar, 
+  Hash, 
+  Key,      
+  Type,      
+  Globe,     
+  PhoneCall, 
+  Info as InfoIcon,
+  Check,
+  Eye,    
+  EyeOff 
 } from 'lucide-react-native';
 
 import { useAuth } from '../context/AuthContext';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { API_URL } from '../config';
 
-const { width } = Dimensions.get('window');
+const { width, height } = Dimensions.get('window'); 
 
 import { HOSPITAL_COORDS } from '../config';
 
@@ -64,21 +88,40 @@ const HomeScreen = () => {
     const { setUserData, onLogout, authState } = useAuth(); // ดึง Token และฟังก์ชัน Logout
     const user = authState?.user; // ข้อมูลโปรไฟล์ผู้ใช้
 
+    // ใช้งาน Theme Context
+    const { fontScale, changeFontScale } = useTheme();
+
     // Navigation & UI States
     const [isCalling, setIsCalling] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false); // สถานะขณะส่งข้อมูลไปยัง Server
     const [showInAppMap, setShowInAppMap] = useState(false); // State สำหรับเปิด/ปิดแผนที่ในแอป
     
     // --- Settings Modal State Management ---
-    const [showSettingsModal, setShowSettingsModal] = useState(false);
-    const [showProfileModal, setShowProfileModal] = useState(false); // [NEW] แยก State สำหรับหน้าโปรไฟล์โดยเฉพาะ
-    const [settingsView, setSettingsView] = useState('main'); // 'main' | 'terms' | 'privacy'
+    const settingsSheetRef = useRef(null);
+    const profileSheetRef = useRef(null);
+    // Snap points: 90% ของหน้าจอ
+    const snapPoints = useMemo(() => ['90%'], []);
+    const [settingsView, setSettingsView] = useState('main'); 
 
     const [secondsLeft, setSecondsLeft] = useState(0);
     const [pressProgress, setPressProgress] = useState(0);
     const [isPressing, setIsPressing] = useState(false);
 
     const [biometricPermission, setBiometricPermission] = useState(null);
+
+    // --- Image Loading State ---
+    const [imageLoadError, setImageLoadError] = useState(false);
+
+    // --- Password Change States ---
+    const [currentPassword, setCurrentPassword] = useState('');
+    const [newPassword, setNewPassword] = useState('');
+    const [confirmPassword, setConfirmPassword] = useState('');
+    const [isChangingPassword, setIsChangingPassword] = useState(false);
+    
+    // Password Visibility States
+    const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+    const [showNewPassword, setShowNewPassword] = useState(false);
+    const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
     // --- เก็บ ID รายการฉุกเฉินปัจจุบัน ---
     const [activeEmergencyId, setActiveEmergencyId] = useState(null);
@@ -107,7 +150,18 @@ const HomeScreen = () => {
     const strokeWidth = 8;
     const circumference = 2 * Math.PI * radius;
 
-    // --- Utility Functions ---
+   // --- [NEW] Backdrop for Bottom Sheet ---
+    const renderBackdrop = useCallback(
+        props => (
+          <BottomSheetBackdrop
+            {...props}
+            disappearsOnIndex={-1}
+            appearsOnIndex={0}
+            opacity={0.5}
+          />
+        ),
+        []
+    );
 
     // ฟังก์ชันคำนวณระยะทาง (Haversine Formula)
     const calculateDistance = (lat1, lon1, lat2, lon2) => {
@@ -156,7 +210,7 @@ const HomeScreen = () => {
         }
     };
 
-    // --- [UPDATED] Biometric Logic with AsyncStorage ---
+    // Biometric Logic with AsyncStorage ---
     useEffect(() => {
         const loadBiometricPreference = async () => {
             try {
@@ -244,8 +298,11 @@ const HomeScreen = () => {
     
         try {
             const result = await axios.get(`${API_URL}/profile`);
-            // console.log("Profile loaded:", result.data);
+               
+            // console.log("Current User State:", JSON.stringify(authState?.user, null, 2));
+            // console.log("Profile loaded:", );
             setUserData(result.data.data);
+            setImageLoadError(false);
         } catch (e) {
             console.error("Profile load failed:", e.message);
             if (e.response?.status === 401) onLogout && onLogout(); // ถ้า Token หมดอายุ ให้เตะออกหน้า Login
@@ -354,6 +411,78 @@ const HomeScreen = () => {
             }
     }, [updateUIWithLocation]);
     
+    // --- [NEW] Change Password Logic ---
+    const handleChangePassword = async () => {
+        // 1. Validation พื้นฐาน
+        if (!currentPassword || !newPassword || !confirmPassword) {
+            Alert.alert('แจ้งเตือน', 'กรุณากรอกข้อมูลให้ครบถ้วน');
+            return;
+        }
+
+        // 2. เช็คความยาว (แนะนำ 8 ตัวขึ้นไปตามมาตรฐานใหม่ แต่ 6 ก็พอใช้ได้)
+        if (newPassword.length < 6) {
+            Alert.alert('แจ้งเตือน', 'รหัสผ่านต้องมีความยาวอย่างน้อย 6 ตัวอักษร');
+            return;
+        }
+
+        // 3. เช็ครหัสใหม่กับยืนยัน
+        if (newPassword !== confirmPassword) {
+            Alert.alert('แจ้งเตือน', 'รหัสผ่านใหม่ไม่ตรงกัน');
+            return;
+        }
+
+        // 4. (เพิ่ม) เช็คว่ารหัสใหม่ซ้ำกับรหัสเดิมหรือไม่
+        if (currentPassword === newPassword) {
+            Alert.alert('แจ้งเตือน', 'รหัสผ่านใหม่ต้องไม่ซ้ำกับรหัสผ่านเดิม');
+            return;
+        }
+
+        setIsChangingPassword(true);
+
+        try {
+            // เรียก API
+            const response = await axios.post(`${API_URL}/change-password`, {
+                old_password: currentPassword,
+                new_password: newPassword,
+                new_password_confirmation: confirmPassword,
+            });
+
+            if (response.status === 200) {
+                Alert.alert('สำเร็จ', 'เปลี่ยนรหัสผ่านเรียบร้อยแล้ว');
+                
+                // เคลียร์ค่า
+                setCurrentPassword('');
+                setNewPassword('');
+                setConfirmPassword('');
+                
+                // กลับไปหน้าหลักทันที
+                setSettingsView('main'); 
+            }
+
+        } catch (error) {
+            console.error("Change password error:", error);
+            
+            // จัดการข้อความ Error ให้ครอบคลุม
+            let msg = "ไม่สามารถเปลี่ยนรหัสผ่านได้";
+            
+            if (error.response) {
+                // Server ตอบกลับมา (4xx, 5xx)
+                msg = error.response.data?.message || msg;
+            } else if (error.request) {
+                // เชื่อมต่อไม่ได้
+                msg = "ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้ กรุณาตรวจสอบอินเทอร์เน็ต";
+            } else {
+                // Error อื่นๆ ของ JS
+                msg = error.message;
+            }
+
+            Alert.alert('เกิดข้อผิดพลาด', msg);
+
+        } finally {
+            setIsChangingPassword(false);
+        }
+    };
+
     // ฟังก์ชันเริ่มต้นการขอความช่วยเหลือฉุกเฉิน
     // --- SOS Submission Logic (หัวใจสำคัญ) ---
     const startSOS = async () => {
@@ -546,145 +675,345 @@ const HomeScreen = () => {
         }
     }, [currentLocation, showInAppMap]);
 
-    // --- Helpers ---
     const strokeDashoffset = circumference - (pressProgress / 100) * circumference;
 
-    // --- Render Content for Settings Modal ---
-       const renderSettingsContent = () => {
+    // Helper: แปลง array ของโรคเป็น string
+    const getCongenitalDiseases = () => {
+        if (!user?.detail_medical?.patient_congenital_disease) return '-';
+        if (Array.isArray(user.detail_medical.patient_congenital_disease)) {
+             return user.detail_medical.patient_congenital_disease.map(d => d.name).join(', ') || 'ไม่มีโรคประจำตัว';
+        }
+        return '-';
+    };
+
+
+   // --- Render Content for Settings Modal ---
+    const renderSettingsContent = () => {
+        const renderHeader = (title) => (
+            <View style={styles.modalHeaderRow}>
+                {/* [UPDATE] ใช้ View 3 ช่อง เพื่อจัดกึ่งกลาง Title */}
+                <View style={{ width: 40, alignItems: 'flex-start' }}>
+                    {settingsView !== 'main' && (
+                        <TouchableOpacity onPress={() => setSettingsView('main')} style={styles.headerBackButton} hitSlop={{top: 15, bottom: 15, left: 15, right: 15}}>
+                            <ChevronLeft size={24} color="#1E293B" />
+                        </TouchableOpacity>
+                    )}
+                </View>
+                
+                <View style={{ flex: 1, alignItems: 'center' }}>
+                    <AppText style={styles.modalTitle}>{title}</AppText>
+                </View>
+
+                <View style={{ width: 40, alignItems: 'flex-end' }}>
+                    <TouchableOpacity onPress={() => settingsSheetRef.current?.dismiss()} style={styles.modalCloseIcon} hitSlop={{top: 15, bottom: 15, left: 15, right: 15}}>
+                        <X size={24} color="#94A3B8" />
+                    </TouchableOpacity>
+                </View>
+            </View>
+        );
+
         if (settingsView === 'terms') {
             return (
                 <>
-                    <View style={styles.modalHeaderRow}>
-                        <TouchableOpacity onPress={() => setSettingsView('main')} style={styles.headerBackButton}>
-                            <ChevronLeft size={24} color="#1E293B" />
-                        </TouchableOpacity>
-                        <Text style={styles.modalTitle}>ข้อกำหนดการใช้บริการ</Text>
-                        <TouchableOpacity onPress={() => setShowSettingsModal(false)} style={styles.modalCloseIcon} hitSlop={{top: 15, bottom: 15, left: 15, right: 15}}>
-                            <X size={24} color="#94A3B8" />
-                        </TouchableOpacity>
-                    </View>
-                    <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={styles.termsContent}>
-                        <Text style={styles.termsHeading}>ข้อกำหนดและเงื่อนไขการใช้บริการ (Terms of Service)</Text>
-                        <Text style={[styles.termsText, { marginBottom: 15, fontStyle: 'italic', textAlign: 'center' }]}>
+                    {renderHeader('ข้อกำหนดการใช้บริการ')}
+                    <BottomSheetScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={styles.termsContent}>
+                        <AppText style={styles.termsHeading}>ข้อกำหนดและเงื่อนไขการใช้บริการ</AppText>
+                        <AppText style={[styles.termsText, { marginBottom: 15, fontStyle: 'italic', textAlign: 'center' }]}>
                             แอปพลิเคชัน: KSVR ACS Fasttrack{'\n'}ฉบับปรับปรุงล่าสุด: 10 มกราคม 2569
-                        </Text>
-                        <Text style={styles.termsHeading}>1. บทนิยาม</Text>
-                        <Text style={styles.termsText}>
-                            "ผู้ให้บริการ" หมายถึง [ชื่อโรงพยาบาล/หน่วยงาน KSVR]...
-                        </Text>
+                        </AppText>
+                        <AppText style={styles.termsHeading}>1. บทนิยาม</AppText>
+                        <AppText style={styles.termsText}>"ผู้ให้บริการ" หมายถึง [ชื่อโรงพยาบาล/หน่วยงาน KSVR]...</AppText>
                         <View style={{height: 40}} />
-                    </ScrollView>
+                    </BottomSheetScrollView>
                 </>
             );
         } else if (settingsView === 'privacy') {
             return (
                 <>
-                    <View style={styles.modalHeaderRow}>
-                        <TouchableOpacity onPress={() => setSettingsView('main')} style={styles.headerBackButton}>
-                            <ChevronLeft size={24} color="#1E293B" />
-                        </TouchableOpacity>
-                        <Text style={styles.modalTitle}>นโยบายความเป็นส่วนตัว</Text>
-                        <TouchableOpacity onPress={() => setShowSettingsModal(false)} style={styles.modalCloseIcon} hitSlop={{top: 15, bottom: 15, left: 15, right: 15}}>
-                            <X size={24} color="#94A3B8" />
-                        </TouchableOpacity>
-                    </View>
-                    <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={styles.termsContent}>
-                        <Text style={styles.termsHeading}>นโยบายความเป็นส่วนตัว (Privacy Policy)</Text>
-                        <Text style={[styles.termsText, { marginBottom: 15, fontStyle: 'italic', textAlign: 'center' }]}>
+                    {renderHeader('นโยบายความเป็นส่วนตัว')}
+                    <BottomSheetScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={styles.termsContent}>
+                        <AppText style={styles.termsHeading}>นโยบายความเป็นส่วนตัว (Privacy Policy)</AppText>
+                        <AppText style={[styles.termsText, { marginBottom: 15, fontStyle: 'italic', textAlign: 'center' }]}>
                             แอปพลิเคชัน: KSVR ACS Fasttrack{'\n'}ฉบับปรับปรุงล่าสุด: 10 มกราคม 2569
-                        </Text>
-                        <Text style={styles.termsHeading}>1. บทนำ</Text>
-                        <Text style={styles.termsText}>
-                            รพ.ค่ายกฤษณ์สีวะรา ("ผู้ให้บริการ") ตระหนักถึงความสำคัญ...
-                        </Text>
+                        </AppText>
+                        <AppText style={styles.termsHeading}>1. บทนำ</AppText>
+                        <AppText style={styles.termsText}>รพ.ค่ายกฤษณ์สีวะรา ("ผู้ให้บริการ") ตระหนักถึงความสำคัญ...</AppText>
                         <View style={{height: 40}} />
-                    </ScrollView>
+                    </BottomSheetScrollView>
                 </>
             );
-        } else if (settingsView === 'profile') {
+        } else if (settingsView === 'password') {
             return (
                 <>
-                     <View style={styles.modalHeaderRow}>
-                        <Text style={styles.modalTitle}>ข้อมูลส่วนตัว</Text>
-                        <TouchableOpacity onPress={() => setShowSettingsModal(false)} style={styles.modalCloseIcon} hitSlop={{top: 15, bottom: 15, left: 15, right: 15}}>
-                            <X size={24} color="#94A3B8" />
-                        </TouchableOpacity>
-                    </View>
-                    <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
-                        <View style={{ padding: 5 }}>
-                            <View style={styles.medicalCard}>
-                                <View style={styles.medicalHeaderCenter}>
-                                    <View style={styles.medicalAvatarLarge}><User size={40} color="white" /></View>
-                                    <View style={{alignItems: 'center', marginTop: 10}}>
-                                        <Text style={styles.medicalNameCenter}>{user?.name || 'ไม่ระบุชื่อ'}</Text>
-                                        <Text style={styles.medicalHNCenter}>HN: {user?.username || '-'}</Text>
-                                    </View>
-                                </View>
-                                <View style={styles.medicalGrid}>
-                                    <View style={styles.medicalItem}><Text style={styles.medicalLabel}>กรุ๊ปเลือด</Text><Text style={styles.medicalValueRed}>{user?.detail_medical?.blood_type || '-'}</Text></View>
-                                    <View style={styles.medicalLine} />
-                                    <View style={styles.medicalItem}><Text style={styles.medicalLabel}>อายุ</Text><Text style={styles.medicalValue}>{user?.detail_genaral?.age ? `${user.detail_genaral.age} ปี` : '-'}</Text></View>
-                                    <View style={styles.medicalLine} />
-                                    <View style={styles.medicalItem}><Text style={styles.medicalLabel}>โรคประจำตัว</Text><Text style={styles.medicalValue} numberOfLines={1}>ACS</Text></View>
-                                </View>
-                                <View style={styles.allergyBox}>
-                                    <View style={{flexDirection: 'row', alignItems: 'center', marginBottom: 5}}><AlertTriangle size={16} color="#F59E0B" /><Text style={styles.allergyTitle}> ประวัติการแพ้ยา</Text></View>
-                                    <Text style={styles.allergyText}>{user?.detail_medical?.drug_allergy || 'ไม่มีประวัติการแพ้ยา'}</Text>
-                                </View>
-                                <View style={styles.infoSection}>
-                                     <Text style={styles.infoSectionTitle}>ผู้ติดต่อฉุกเฉิน</Text>
-                                     <View style={styles.contactRow}>
-                                        <View style={styles.contactIcon}><Phone size={16} color="white" /></View>
-                                        <View>
-                                            <Text style={styles.contactName}>{user?.emergency_contact?.name || 'ไม่ได้ระบุ'}</Text>
-                                            <Text style={styles.contactRelation}>{user?.emergency_contact?.relation || 'ญาติ'}</Text>
-                                        </View>
-                                     </View>
-                                </View>
+                    {renderHeader('เปลี่ยนรหัสผ่าน')}
+                    <BottomSheetScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={styles.termsContent}>
+                        <View style={styles.formGroup}>
+                            <AppText style={styles.inputLabel}>รหัสผ่านปัจจุบัน</AppText>
+                            <View style={styles.passwordContainer}>
+                                <TextInput 
+                                    style={styles.passwordInput} 
+                                    secureTextEntry={!showCurrentPassword}
+                                    placeholder="กรอกรหัสผ่านปัจจุบัน" 
+                                    placeholderTextColor="#94A3B8" 
+                                    value={currentPassword}
+                                    onChangeText={setCurrentPassword}
+                                />
+                                <TouchableOpacity onPress={() => setShowCurrentPassword(!showCurrentPassword)} style={styles.eyeIcon}>
+                                    {showCurrentPassword ? <EyeOff size={20} color="#94A3B8" /> : <Eye size={20} color="#94A3B8" />}
+                                </TouchableOpacity>
                             </View>
                         </View>
-                    </ScrollView>
+                        <View style={styles.formGroup}>
+                            <AppText style={styles.inputLabel}>รหัสผ่านใหม่</AppText>
+                            <View style={styles.passwordContainer}>
+                                <TextInput 
+                                    style={styles.passwordInput} 
+                                    secureTextEntry={!showNewPassword}
+                                    placeholder="กรอกรหัสผ่านใหม่" 
+                                    placeholderTextColor="#94A3B8" 
+                                    value={newPassword}
+                                    onChangeText={setNewPassword}
+                                />
+                                <TouchableOpacity onPress={() => setShowNewPassword(!showNewPassword)} style={styles.eyeIcon}>
+                                    {showNewPassword ? <EyeOff size={20} color="#94A3B8" /> : <Eye size={20} color="#94A3B8" />}
+                                </TouchableOpacity>
+                            </View>
+                        </View>
+                        <View style={styles.formGroup}>
+                            <AppText style={styles.inputLabel}>ยืนยันรหัสผ่านใหม่</AppText>
+                            <View style={styles.passwordContainer}>
+                                <TextInput 
+                                    style={styles.passwordInput} 
+                                    secureTextEntry={!showConfirmPassword}
+                                    placeholder="กรอกรหัสผ่านใหม่ซ้ำอีกครั้ง" 
+                                    placeholderTextColor="#94A3B8" 
+                                    value={confirmPassword}
+                                    onChangeText={setConfirmPassword}
+                                />
+                                <TouchableOpacity onPress={() => setShowConfirmPassword(!showConfirmPassword)} style={styles.eyeIcon}>
+                                    {showConfirmPassword ? <EyeOff size={20} color="#94A3B8" /> : <Eye size={20} color="#94A3B8" />}
+                                </TouchableOpacity>
+                            </View>
+                        </View>
+                        <TouchableOpacity 
+                            style={[styles.saveButton, isChangingPassword && { opacity: 0.7 }]} 
+                            onPress={handleChangePassword}
+                            disabled={isChangingPassword}
+                        >
+                             {isChangingPassword ? (
+                                <ActivityIndicator color="white" />
+                            ) : (
+                                <AppText style={styles.saveButtonText}>บันทึกการเปลี่ยนแปลง</AppText>
+                            )}
+                        </TouchableOpacity>
+                    </BottomSheetScrollView>
+                </>
+            );
+        } else if (settingsView === 'font') {
+            return (
+                <>
+                    {renderHeader('ขนาดตัวอักษร')}
+                    <View style={{ flex: 1, padding: 20 }}>
+                        <View style={{ 
+                            padding: 20, 
+                            backgroundColor: '#F8FAFC', 
+                            borderRadius: 16, 
+                            marginBottom: 30, 
+                            alignItems: 'center', 
+                            justifyContent: 'center',
+                            minHeight: 120,
+                            borderWidth: 1,
+                            borderColor: '#E2E8F0'
+                        }}>
+                            <AppText style={{ fontSize: 16 * fontScale }}>ตัวอย่างข้อความ</AppText>
+                            <AppText style={{ fontSize: 14 * fontScale, color: '#64748B', marginTop: 8 }}>นี่คือขนาดตัวอักษรปัจจุบันของคุณ</AppText>
+                        </View>
+
+                        <AppText style={{ fontSize: 16, fontWeight: 'bold', marginBottom: 15, color: '#1E293B' }}>เลือกขนาดตัวอักษร</AppText>
+
+                        <View style={{ gap: 12 }}>
+                            <TouchableOpacity 
+                                style={[
+                                    styles.fontSizeOption, 
+                                    fontScale === FONT_SCALES.SMALL && styles.fontSizeOptionActive
+                                ]}
+                                onPress={() => changeFontScale(FONT_SCALES.SMALL)}
+                            >
+                                <Text style={{ fontSize: 16, color: fontScale === FONT_SCALES.SMALL ? 'white' : '#1E293B' }}>A</Text>
+                                <AppText style={[styles.fontSizeLabel, { color: fontScale === FONT_SCALES.SMALL ? 'white' : '#1E293B' }]}>เล็ก (16)</AppText>
+                                {fontScale === FONT_SCALES.SMALL && <Check size={20} color="white" />}
+                            </TouchableOpacity>
+
+                             <TouchableOpacity 
+                                style={[
+                                    styles.fontSizeOption, 
+                                    fontScale === FONT_SCALES.MEDIUM && styles.fontSizeOptionActive
+                                ]}
+                                onPress={() => changeFontScale(FONT_SCALES.MEDIUM)}
+                            >
+                                <Text style={{ fontSize: 20, fontWeight: 'bold', color: fontScale === FONT_SCALES.MEDIUM ? 'white' : '#1E293B' }}>A</Text>
+                                <AppText style={[styles.fontSizeLabel, { color: fontScale === FONT_SCALES.MEDIUM ? 'white' : '#1E293B' }]}>กลาง (20)</AppText>
+                                {fontScale === FONT_SCALES.MEDIUM && <Check size={20} color="white" />}
+                            </TouchableOpacity>
+
+                             <TouchableOpacity 
+                                style={[
+                                    styles.fontSizeOption, 
+                                    fontScale === FONT_SCALES.LARGE && styles.fontSizeOptionActive
+                                ]}
+                                onPress={() => changeFontScale(FONT_SCALES.LARGE)}
+                            >
+                                <Text style={{ fontSize: 24, fontWeight: '900', color: fontScale === FONT_SCALES.LARGE ? 'white' : '#1E293B' }}>A</Text>
+                                <AppText style={[styles.fontSizeLabel, { color: fontScale === FONT_SCALES.LARGE ? 'white' : '#1E293B' }]}>ใหญ่ (24)</AppText>
+                                {fontScale === FONT_SCALES.LARGE && <Check size={20} color="white" />}
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </>
+            );
+        } else if (settingsView === 'language') {
+            return (
+                <>
+                    {renderHeader('ภาษา')}
+                    <View style={styles.placeholderContainer}>
+                        <InfoIcon size={48} color="#CBD5E1" />
+                        <AppText style={styles.placeholderText}>ฟีเจอร์นี้อยู่ระหว่างการพัฒนา</AppText>
+                    </View>
+                </>
+            );
+        } else if (settingsView === 'contact') {
+            return (
+                <>
+                    {renderHeader('ติดต่อโรงพยาบาล')}
+                    <BottomSheetScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={styles.termsContent}>
+                         <View style={styles.contactCard}>
+                             <PhoneCall size={32} color="#EF4444" style={{marginBottom: 10}} />
+                             <AppText style={styles.contactTitle}>รพ.ค่ายกฤษณ์สีวะรา</AppText>
+                             <AppText style={styles.contactSubtitle}>แผนกฉุกเฉิน 24 ชั่วโมง</AppText>
+                             <TouchableOpacity style={styles.callButton} onPress={() => Linking.openURL('tel:1669')}>
+                                <AppText style={styles.callButtonText}>โทร 1669</AppText>
+                             </TouchableOpacity>
+                             <TouchableOpacity style={[styles.callButton, {backgroundColor: 'white', borderWidth:1, borderColor:'#E2E8F0', marginTop: 10}]} onPress={() => Linking.openURL('tel:042712867')}>
+                                <AppText style={[styles.callButtonText, {color:'#1E293B'}]}>โทร 042-712867</AppText>
+                             </TouchableOpacity>
+                         </View>
+                    </BottomSheetScrollView>
+                </>
+            );
+        } else if (settingsView === 'about') {
+            return (
+                <>
+                    {renderHeader('เกี่ยวกับแอป')}
+                    <View style={styles.aboutContainer}>
+                         <View style={styles.logoCircle}><Heart size={24} color="white" fill="white" /></View>
+                         <AppText style={styles.aboutAppName}>KSVR ACS Fasttrack</AppText>
+                         <AppText style={styles.aboutVersion}>Version 1.0.0</AppText>
+                         <AppText style={styles.aboutDesc}>แอปพลิเคชันสำหรับแจ้งเหตุฉุกเฉินผู้ป่วยโรคหัวใจและหลอดเลือด โรงพยาบาลค่ายกฤษณ์สีวะรา จังหวัดสกลนคร</AppText>
+                    </View>
                 </>
             );
         }
 
+        // --- Default: Main Settings Menu ---
         return (
             <>
                 <View style={styles.modalHeaderRow}>
-                    <Text style={styles.modalTitle}>ตั้งค่า</Text>
-                    <TouchableOpacity onPress={() => setShowSettingsModal(false)} style={styles.modalCloseIcon} hitSlop={{top: 15, bottom: 15, left: 15, right: 15}}>
-                        <X size={24} color="#94A3B8" />
-                    </TouchableOpacity>
+                    <View style={{ width: 40 }} />
+                    <View style={{ flex: 1, alignItems: 'center' }}>
+                         <AppText style={styles.modalTitle}>ตั้งค่า</AppText>
+                    </View>
+                    <View style={{ width: 40, alignItems: 'flex-end' }}>
+                        <TouchableOpacity onPress={() => settingsSheetRef.current?.dismiss()} style={styles.modalCloseIcon} hitSlop={{top: 15, bottom: 15, left: 15, right: 15}}>
+                            <X size={24} color="#94A3B8" />
+                        </TouchableOpacity>
+                    </View>
                 </View>
 
-                <View style={{ width: '100%' }}>
+                {/* [FIXED] ใช้ BottomSheetScrollView เพื่อให้เมนูเลื่อนได้ใน Bottom Sheet */}
+                <BottomSheetScrollView 
+                    style={{ flex: 1, width: '100%' }} 
+                    showsVerticalScrollIndicator={false}
+                    contentContainerStyle={{ paddingBottom: 100 }} // [FIX] เพิ่ม paddingBottom เป็น 100 เพื่อให้เห็นปุ่มออกจากระบบ
+                >
                     <View style={styles.menuSection}>
+                        <AppText style={styles.menuGroupTitle}>บัญชีผู้ใช้</AppText>
                         <TouchableOpacity style={styles.menuItem} onPress={() => {
-                            authenticateUser(() => setSettingsView('profile'));
+                            authenticateUser(() => {
+                                settingsSheetRef.current?.dismiss();
+                                setTimeout(() => {
+                                    profileSheetRef.current?.present();
+                                }, 300);
+                            });
                         }}>
-                            <UserCircle size={20} color="#EF4444" />
-                            <Text style={styles.menuItemText}>โปรไฟล์</Text>
+                            <View style={[styles.menuIconBox, { backgroundColor: '#FEF2F2' }]}>
+                                <UserCircle size={20} color="#EF4444" />
+                            </View>
+                            <AppText style={styles.menuItemText}>ข้อมูลส่วนตัว (Medical ID)</AppText>
                             <ChevronRight size={16} color="#CBD5E1" />
                         </TouchableOpacity>
 
-                        <TouchableOpacity style={styles.menuItem} onPress={() => setSettingsView('terms')}>
-                            <FileText size={20} color="#3B82F6" />
-                            <Text style={styles.menuItemText}>ข้อกำหนดการใช้บริการ</Text>
+                        <TouchableOpacity style={styles.menuItem} onPress={() => setSettingsView('password')}>
+                             <View style={[styles.menuIconBox, { backgroundColor: '#F0F9FF' }]}>
+                                <Key size={20} color="#0EA5E9" />
+                            </View>
+                            <AppText style={styles.menuItemText}>เปลี่ยนรหัสผ่าน</AppText>
+                            <ChevronRight size={16} color="#CBD5E1" />
+                        </TouchableOpacity>
+                    </View>
+
+                    <View style={styles.menuSection}>
+                        <AppText style={styles.menuGroupTitle}>การใช้งาน</AppText>
+                        <TouchableOpacity style={styles.menuItem} onPress={() => setSettingsView('font')}>
+                            <View style={[styles.menuIconBox, { backgroundColor: '#FDF4FF' }]}>
+                                <Type size={20} color="#C026D3" />
+                            </View>
+                            <AppText style={styles.menuItemText}>ขนาดตัวอักษร</AppText>
+                            <ChevronRight size={16} color="#CBD5E1" />
+                        </TouchableOpacity>
+                    </View>
+
+                    <View style={styles.menuSection}>
+                        <AppText style={styles.menuGroupTitle}>ช่วยเหลือ</AppText>
+                        <TouchableOpacity style={styles.menuItem} onPress={() => setSettingsView('contact')}>
+                             <View style={[styles.menuIconBox, { backgroundColor: '#ECFDF5' }]}>
+                                <PhoneCall size={20} color="#10B981" />
+                            </View>
+                            <AppText style={styles.menuItemText}>ติดต่อโรงพยาบาล</AppText>
+                            <ChevronRight size={16} color="#CBD5E1" />
+                        </TouchableOpacity>
+                        
+                         <TouchableOpacity style={styles.menuItem} onPress={() => setSettingsView('terms')}>
+                             <View style={[styles.menuIconBox, { backgroundColor: '#F1F5F9' }]}>
+                                <FileText size={20} color="#64748B" />
+                            </View>
+                            <AppText style={styles.menuItemText}>ข้อกำหนดการใช้บริการ</AppText>
                             <ChevronRight size={16} color="#CBD5E1" />
                         </TouchableOpacity>
 
                         <TouchableOpacity style={styles.menuItem} onPress={() => setSettingsView('privacy')}>
-                            <Lock size={20} color="#10B981" />
-                            <Text style={styles.menuItemText}>นโยบายความเป็นส่วนตัว</Text>
+                             <View style={[styles.menuIconBox, { backgroundColor: '#F1F5F9' }]}>
+                                <Lock size={20} color="#64748B" />
+                            </View>
+                            <AppText style={styles.menuItemText}>นโยบายความเป็นส่วนตัว</AppText>
                             <ChevronRight size={16} color="#CBD5E1" />
                         </TouchableOpacity>
-
-                        <TouchableOpacity style={styles.logoutButton} onPress={() => { setShowSettingsModal(false); onLogout(); }}>
-                            <LogOut size={20} color="#EF4444" />
-                            <Text style={styles.logoutText}>ออกจากระบบ</Text>
+                        
+                         <TouchableOpacity style={styles.menuItem} onPress={() => setSettingsView('about')}>
+                             <View style={[styles.menuIconBox, { backgroundColor: '#F1F5F9' }]}>
+                                <InfoIcon size={20} color="#64748B" />
+                            </View>
+                            <AppText style={styles.menuItemText}>เกี่ยวกับแอป</AppText>
+                            <ChevronRight size={16} color="#CBD5E1" />
                         </TouchableOpacity>
                     </View>
-                </View>
+
+                    <View style={styles.menuSection}>
+                        <TouchableOpacity style={styles.logoutButton} onPress={() => { settingsSheetRef.current?.dismiss(); onLogout(); }}>
+                            <LogOut size={20} color="#EF4444" />
+                            <AppText style={styles.logoutText}>ออกจากระบบ</AppText>
+                        </TouchableOpacity>
+                    </View>
+                </BottomSheetScrollView>
             </>
         );
     };
@@ -692,241 +1021,337 @@ const HomeScreen = () => {
     if (loading) {
         return (
             <View style={styles.loadingContainer}>
-                <ActivityIndicator size="large" color="#EF4444" />
-                <Text style={styles.loadingText}>กำลังดึงข้อมูล...</Text>
+                <View style={styles.loadingIconContainer}>
+                    <Heart size={80} color="#EF4444" fill="#FEF2F2" strokeWidth={1.5} />
+                </View>
+                <ActivityIndicator size="large" color="#EF4444" style={{ marginBottom: 20 }} />
+                <AppText style={styles.loadingTitle}>KSVR ACS</AppText>
+                <AppText style={styles.loadingText}>กำลังเตรียมระบบ...</AppText>
             </View>
         );
     }
  
     return (
-        <SafeAreaView style={styles.container}>
-            <StatusBar barStyle="dark-content" />
-            
-            {/* Header (Minimal) */}
-            <View style={styles.headerBar}>
-                <View style={styles.logoContainer}>
-                    <View style={styles.logoCircle}><Heart size={16} color="white" fill="white" /></View>
-                    <Text style={styles.appNameText}>KSVR <Text style={styles.appNameLight}>ACS FAST TRACK</Text></Text>
-                </View>
-                <TouchableOpacity 
-                    style={styles.settingsIconButton}
-                    onPress={() => { setSettingsView('main'); setShowSettingsModal(true); }}
-                >
-                    <Settings size={20} color="#94A3B8" />
-                </TouchableOpacity>
-            </View>
-
-            <ScrollView 
-                showsVerticalScrollIndicator={false}
-                contentContainerStyle={{ flexGrow: 1 }}
-                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#EF4444']} />}
-            >
-                <View style={{ flex: 1, paddingBottom: 40 }}>
-                    {/* --- Redesigned Main Card --- */}
-                    <View style={styles.unifiedCard}>
-                        {/* Profile Section */}
+        <GestureHandlerRootView style={{ flex: 1 }}>
+            <BottomSheetModalProvider>
+                <SafeAreaView style={styles.container}>
+                    <StatusBar barStyle="dark-content" />
+                    
+                    {/* Header (Minimal) */}
+                    <View style={styles.headerBar}>
+                        <View style={styles.logoContainer}>
+                            <View style={styles.logoCircle}><Heart size={16} color="white" fill="white" /></View>
+                            <AppText style={styles.appNameText}>KSVR <AppText style={styles.appNameLight}>ACS FAST TRACK</AppText></AppText>
+                        </View>
                         <TouchableOpacity 
-                            style={styles.profileHeaderSection}
-                            // [NEW] เรียกใช้ฟังก์ชันสแกนนิ้วก่อนเข้าดูโปรไฟล์
-                            onPress={() => authenticateUser(() => setShowProfileModal(true))}
-                            activeOpacity={0.8}
+                            style={styles.settingsIconButton}
+                            onPress={() => { setSettingsView('main'); settingsSheetRef.current?.present(); }}
                         >
-                             <View style={styles.profileRow}>
-                                 <View style={styles.avatarContainerMain}>
-                                    <View style={styles.avatarCircleMain}><User size={30} color="#FFFFFF" /></View>
-                                    <View style={styles.onlineBadgeMain} />
-                                 </View>
-                                 <View style={styles.greetingContainer}>
-                                     <Text style={styles.greetingText}>สวัสดี,</Text>
-                                     <Text style={styles.patientNameMain} numberOfLines={1}>{user?.name || 'ผู้ใช้งาน'}</Text>
-                                     <View style={styles.hnTag}>
-                                        <Text style={styles.hnTagLabel}>HN</Text>
-                                        <Text style={styles.hnTagValue}>{user?.username || '-'}</Text>
-                                    </View>
-                                 </View>
-                                 <View style={styles.profileChevron}>
-                                    <ChevronRight size={20} color="#94A3B8" />
-                                 </View>
-                             </View>
-                        </TouchableOpacity>
-
-                        <View style={styles.sectionDivider} />
-
-                        {/* Location Section with Info Dashboard (Inline) */}
-                        <TouchableOpacity 
-                            onPress={openInMaps} 
-                            activeOpacity={0.9} 
-                            style={styles.locationBoxMain}
-                        >
-                            <View style={styles.locationContentContainer}>
-                                {/* [UPDATE] New Inline Layout for Location */}
-                                <View style={{ flexDirection: 'row', marginBottom: 8 }}>
-                                    <View style={styles.mapIconBadge}>
-                                        <MapPin size={20} color="#FFFFFF" />
-                                    </View>
-                                    <View style={{ flex: 1, justifyContent: 'center' }}>
-                                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
-                                            <Text style={styles.locationLabelMain}>ตำแหน่งของคุณ</Text>
-                                            {isLocationLive && (
-                                                <View style={styles.liveBadgeSmall}>
-                                                    <Animated.View style={[styles.liveDotSmall, { opacity: blinkAnim }]} />
-                                                    <Text style={styles.liveTextSmall}>LIVE</Text>
-                                                </View>
-                                            )}
-                                        </View>
-                                        <Text style={styles.addressTextMain} numberOfLines={2}>{address}</Text>
-                                    </View>
-                                </View>
-
-                                {/* Merged Info Dashboard */}
-                                <View style={styles.miniStatsRow}>
-                                    <View style={styles.miniStatItem}>
-                                        <Text style={styles.miniStatLabel}>หมู่เลือด</Text>
-                                        <Text style={styles.miniStatValue}>{user?.detail_medical?.blood_type || '-'}</Text>
-                                    </View>
-                                    <View style={styles.miniStatDivider} />
-                                    <View style={styles.miniStatItem}>
-                                        <Text style={styles.miniStatLabel}>เวลาเดินทาง</Text>
-                                        <Text style={styles.miniStatValue}>~{Math.ceil(calculateTravelTime(distance)/60)} นาที</Text>
-                                    </View>
-                                </View>
-                            </View>
+                            <Settings size={20} color="#94A3B8" />
                         </TouchableOpacity>
                     </View>
 
-                    {/* Interactive Area (SOS) */}
-                    <View style={styles.mainInteractiveArea}>
-                        {!isCalling ? (
-                            <>
-                                <View style={styles.headerTextContainer}>
-                                    <Text style={styles.title}>ขอความช่วยเหลือ</Text>
-                                    {/* [UPDATE] เปลี่ยนข้อความตามคำขอ */}
-                                    <Text style={styles.subtitle}>{HOSPITAL_COORDS.name} ระยะทางประมาณ {distance} กม.</Text>
-                                </View>
+                    <ScrollView 
+                        showsVerticalScrollIndicator={false}
+                        contentContainerStyle={{ flexGrow: 1 }}
+                        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#EF4444']} />}
+                    >
+                        <View style={{ flex: 1, paddingBottom: 40 }}>
+                            {/* --- Redesigned Main Card --- */}
+                            <View style={styles.unifiedCard}>
+                                {/* Profile Section */}
+                                <TouchableOpacity 
+                                    style={styles.profileHeaderSection}
+                                    // [NEW] เรียกใช้ฟังก์ชันสแกนนิ้วก่อนเข้าดูโปรไฟล์
+                                    onPress={() => authenticateUser(() => profileSheetRef.current?.present())}
+                                    activeOpacity={0.8}
+                                >
+                                     <View style={styles.profileRow}>
+                                         <View style={styles.avatarContainerMain}>
+                                            <View style={styles.avatarCircleMain}>
+                                                {/* [FIX] Check for user profile picture and load if available, else show icon */}
+                                                {user?.picture_profile && !imageLoadError ? (
+                                                    <Image 
+                                                        source={{ uri: `https://ksvrhospital.go.th/krit-siwara_smart_heart/files/avatars/${user.picture_profile}` }}
+                                                        style={{ width: '100%', height: '100%', borderRadius: 30 }}
+                                                        resizeMode="cover"
+                                                        onError={() => setImageLoadError(true)}
+                                                    />
+                                                ) : (
+                                                    <User size={30} color="#FFFFFF" />
+                                                )}
+                                            </View>
+                                            <View style={styles.onlineBadgeMain} />
+                                         </View>
+                                         <View style={styles.greetingContainer}>
+                                             <AppText style={styles.greetingText}>สวัสดี,</AppText>
+                                             <AppText style={styles.patientNameMain} numberOfLines={1}>{user?.name || 'ผู้ใช้งาน'}</AppText>
+                                             <View style={styles.hnTag}>
+                                                <AppText style={styles.hnTagLabel}>HN</AppText>
+                                                <AppText style={styles.hnTagValue}>{user?.hn || user?.username || '-'}</AppText>
+                                            </View>
+                                         </View>
+                                         <View style={styles.profileChevron}>
+                                            <ChevronRight size={20} color="#94A3B8" />
+                                         </View>
+                                     </View>
+                                </TouchableOpacity>
 
-                                <View style={styles.sosWrapper}>
-                                    <Svg width={240} height={240} style={styles.svg}>
-                                        <Circle cx="120" cy="120" r="110" stroke="#FEE2E2" strokeWidth={4} fill="transparent" />
-                                        <Circle cx="120" cy="120" r="110" stroke="#EF4444" strokeWidth={4} fill="transparent" strokeDasharray={2 * Math.PI * 110} strokeDashoffset={2 * Math.PI * 110 - (pressProgress / 100) * (2 * Math.PI * 110)} strokeLinecap="round" />
-                                    </Svg>
-                                    <Animated.View style={{ transform: [{ scale: isPressing ? scaleAnim : pulseAnim }] }}>
-                                        <TouchableOpacity 
-                                            activeOpacity={1} 
-                                            onPressIn={handlePressIn} 
-                                            onPressOut={handlePressOut} 
-                                            disabled={isSubmitting}
-                                            style={[styles.sosButton, isPressing && styles.sosButtonActive, isSubmitting && styles.sosButtonDisabled]}
-                                        >
-                                            {isSubmitting ? <ActivityIndicator size="large" color="white" /> : (
-                                                <><Heart size={56} color="white" fill="white" /><Text style={styles.sosText}>ฉุกเฉิน</Text></>
-                                            )}
-                                        </TouchableOpacity>
-                                    </Animated.View>
-                                </View>
-                                <Text style={styles.holdText}>กดค้าง 1 วินาที เพื่อขอความช่วยเหลือ</Text>
-                            </>
-                        ) : (
-                            <View style={styles.statusContainer}>
-                                <View style={styles.activeCard}>
-                                    <View style={styles.activeCardHeader}>
-                                        <View><View style={styles.liveIndicator}><View style={styles.redDot} /><Text style={styles.liveText}>GPS Active</Text></View><Text style={styles.cardTitle}>กำลังมาหาคุณ</Text></View>
-                                        <View style={styles.timerBadge}><Text style={styles.timerText}>{formatTime(secondsLeft)}</Text><Text style={styles.timerUnit}>นาที</Text></View>
+                                <View style={styles.sectionDivider} />
+
+                                {/* Location Section with Info Dashboard (Inline) */}
+                                <TouchableOpacity 
+                                    onPress={openInMaps} 
+                                    activeOpacity={0.9} 
+                                    style={styles.locationBoxMain}
+                                >
+                                    <View style={styles.locationContentContainer}>
+                                        {/* [UPDATE] New Inline Layout for Location */}
+                                        <View style={{ flexDirection: 'row', marginBottom: 8 }}>
+                                            <View style={styles.mapIconBadge}>
+                                                <MapPin size={20} color="#FFFFFF" />
+                                            </View>
+                                            <View style={{ flex: 1, justifyContent: 'center' }}>
+                                                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
+                                                    <AppText style={styles.locationLabelMain}>ตำแหน่งของคุณ</AppText>
+                                                    {isLocationLive && (
+                                                        <View style={styles.liveBadgeSmall}>
+                                                            <Animated.View style={[styles.liveDotSmall, { opacity: blinkAnim }]} />
+                                                            <AppText style={styles.liveTextSmall}>LIVE</AppText>
+                                                        </View>
+                                                    )}
+                                                </View>
+                                                <AppText style={styles.addressTextMain} numberOfLines={2}>{address}</AppText>
+                                            </View>
+                                        </View>
+
+                                        {/* Merged Info Dashboard */}
+                                        <View style={styles.miniStatsRow}>
+                                            <View style={styles.miniStatItem}>
+                                                <AppText style={styles.miniStatLabel}>หมู่เลือด</AppText>
+                                                {/* [FIX] Map กับค่า blood_type */}
+                                                <AppText style={styles.miniStatValue}>{user?.detail_medical?.blood_type || '-'}</AppText>
+                                            </View>
+                                            <View style={styles.miniStatDivider} />
+                                            <View style={styles.miniStatItem}>
+                                                <AppText style={styles.miniStatLabel}>เวลาเดินทางถึง รพ.</AppText>
+                                                <AppText style={styles.miniStatValue}>~{Math.ceil(calculateTravelTime(distance)/60)} นาที</AppText>
+                                            </View>
+                                        </View>
                                     </View>
-                                    <View style={styles.cardDivider} />
-                                    <View style={styles.dispatchedInfo}><Zap size={24} color="#FACC15" /><View style={{ marginLeft: 15 }}><Text style={styles.unitTitle}>{HOSPITAL_COORDS.name}</Text><Text style={styles.unitSub}>เจ้าหน้าที่กำลังเดินทาง</Text></View></View>
-                                </View>
-                                <View style={styles.checklistContainer}><Text style={styles.checklistHeader}>ข้อปฏิบัติระหว่างรอ:</Text>{[{ text: 'นั่งนิ่งๆ หายใจช้าๆ', bold: true }, { text: 'อมยาใต้ลิ้นทันที (ถ้ามี)', bold: true }, { text: 'ปลดกระดุมเสื้อให้หายใจสะดวก', bold: false }].map((item, i) => (<View key={i} style={styles.checkItem}><View style={[styles.checkCircle, item.bold && {borderColor: '#EF4444'}]} /><Text style={[styles.checkText, item.bold && {fontWeight: 'bold'}]}>{item.text}</Text></View>))}</View>
-                                <TouchableOpacity onPress={handleCancelSOS} style={styles.cancelButton} hitSlop={{ top: 20, bottom: 20, left: 50, right: 50 }} activeOpacity={0.6} disabled={isSubmitting}>
-                                    {isSubmitting ? <ActivityIndicator size="small" color="#94A3B8" /> : <Text style={styles.cancelButtonText}>ยกเลิกรายการเรียก</Text>}
                                 </TouchableOpacity>
                             </View>
-                        )}
-                    </View>
-                </View>
-            </ScrollView>
 
-            {/* --- Unified Settings Modal (In-Modal Navigation) --- */}
-            <Modal animationType="slide" transparent={true} visible={showSettingsModal} onRequestClose={() => setShowSettingsModal(false)}>
-                <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setShowSettingsModal(false)}>
-                    <TouchableWithoutFeedback onPress={() => {}}>
-                        <View style={[
-                            styles.settingsModalContent, 
-                            (settingsView === 'terms' || settingsView === 'privacy' || settingsView === 'profile') && { height: '85%' }
-                        ]}>
-                            <View style={styles.modalHandle} />
-                            {renderSettingsContent()}
-                        </View>
-                    </TouchableWithoutFeedback>
-                </TouchableOpacity>
-            </Modal>
-
-             {/* --- Profile Modal (Standalone) --- */}
-             <Modal animationType="slide" transparent={false} visible={showProfileModal} onRequestClose={() => setShowProfileModal(false)}>
-                <SafeAreaView style={styles.container}>
-                    <View style={styles.headerBar}>
-                        <TouchableOpacity onPress={() => setShowProfileModal(false)} style={styles.settingsIconButton}>
-                            <ChevronLeft size={24} color="#1E293B" />
-                        </TouchableOpacity>
-                        <Text style={{fontSize: 20, fontWeight: '900', color: '#1E293B'}}>ข้อมูลส่วนตัว</Text>
-                         {/* [NEW] เพิ่มปุ่มปิด (X) ด้านขวา */}
-                         <TouchableOpacity onPress={() => setShowProfileModal(false)} style={styles.settingsIconButton}>
-                            <X size={24} color="#EF4444" />
-                        </TouchableOpacity>
-                    </View>
-                    <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
-                        <View style={{ padding: 20 }}>
-                            <View style={styles.medicalCard}>
-                                <View style={styles.medicalHeaderCenter}>
-                                    <View style={styles.medicalAvatarLarge}><User size={40} color="white" /></View>
-                                    <View style={{alignItems: 'center', marginTop: 10}}>
-                                        <Text style={styles.medicalNameCenter}>{user?.name || 'ไม่ระบุชื่อ'}</Text>
-                                        <Text style={styles.medicalHNCenter}>HN: {user?.username || '-'}</Text>
-                                    </View>
-                                </View>
-                                <View style={styles.medicalGrid}>
-                                    <View style={styles.medicalItem}><Text style={styles.medicalLabel}>กรุ๊ปเลือด</Text><Text style={styles.medicalValueRed}>{user?.detail_medical?.blood_type || '-'}</Text></View>
-                                    <View style={styles.medicalLine} />
-                                    <View style={styles.medicalItem}><Text style={styles.medicalLabel}>อายุ</Text><Text style={styles.medicalValue}>{user?.detail_genaral?.age ? `${user.detail_genaral.age} ปี` : '-'}</Text></View>
-                                    <View style={styles.medicalLine} />
-                                    <View style={styles.medicalItem}><Text style={styles.medicalLabel}>โรคประจำตัว</Text><Text style={styles.medicalValue} numberOfLines={1}>ACS</Text></View>
-                                </View>
-                                <View style={styles.allergyBox}>
-                                    <View style={{flexDirection: 'row', alignItems: 'center', marginBottom: 5}}><AlertTriangle size={16} color="#F59E0B" /><Text style={styles.allergyTitle}> ประวัติการแพ้ยา</Text></View>
-                                    <Text style={styles.allergyText}>{user?.detail_medical?.drug_allergy || 'ไม่มีประวัติการแพ้ยา'}</Text>
-                                </View>
-                                {/* Emergency Contact */}
-                                <View style={styles.infoSection}>
-                                     <Text style={styles.infoSectionTitle}>ผู้ติดต่อฉุกเฉิน</Text>
-                                     <View style={styles.contactRow}>
-                                        <View style={styles.contactIcon}><Phone size={16} color="white" /></View>
-                                        <View>
-                                            <Text style={styles.contactName}>{user?.emergency_contact?.name || 'ไม่ได้ระบุ'}</Text>
-                                            <Text style={styles.contactRelation}>{user?.emergency_contact?.relation || 'ญาติ'}</Text>
+                            {/* Interactive Area (SOS) */}
+                            <View style={styles.mainInteractiveArea}>
+                                {!isCalling ? (
+                                    <>
+                                        <View style={styles.headerTextContainer}>
+                                            <AppText style={styles.title}>ขอความช่วยเหลือ</AppText>
+                                            {/* [UPDATE] เปลี่ยนข้อความตามคำขอ */}
+                                            <AppText style={styles.subtitle}>{HOSPITAL_COORDS.name} ระยะทางประมาณ {distance} กม.</AppText>
                                         </View>
-                                     </View>
-                                </View>
+
+                                        <View style={styles.sosWrapper}>
+                                            <Svg width={240} height={240} style={styles.svg}>
+                                                <Circle cx="120" cy="120" r="110" stroke="#FEE2E2" strokeWidth={4} fill="transparent" />
+                                                <Circle cx="120" cy="120" r="110" stroke="#EF4444" strokeWidth={4} fill="transparent" strokeDasharray={2 * Math.PI * 110} strokeDashoffset={2 * Math.PI * 110 - (pressProgress / 100) * (2 * Math.PI * 110)} strokeLinecap="round" />
+                                            </Svg>
+                                            <Animated.View style={{ transform: [{ scale: isPressing ? scaleAnim : pulseAnim }] }}>
+                                                <TouchableOpacity 
+                                                    activeOpacity={1} 
+                                                    onPressIn={handlePressIn} 
+                                                    onPressOut={handlePressOut} 
+                                                    disabled={isSubmitting}
+                                                    style={[styles.sosButton, isPressing && styles.sosButtonActive, isSubmitting && styles.sosButtonDisabled]}
+                                                >
+                                                    {isSubmitting ? <ActivityIndicator size="large" color="white" /> : (
+                                                        <><Heart size={56} color="white" fill="white" /><Text style={styles.sosText}>ฉุกเฉิน</Text></>
+                                                    )}
+                                                </TouchableOpacity>
+                                            </Animated.View>
+                                        </View>
+                                        <AppText style={styles.holdText}>กดค้าง 1 วินาที เพื่อขอความช่วยเหลือ</AppText>
+                                    </>
+                                ) : (
+                                    <View style={styles.statusContainer}>
+                                        <View style={styles.activeCard}>
+                                            <View style={styles.activeCardHeader}>
+                                                <View><View style={styles.liveIndicator}><View style={styles.redDot} /><AppText style={styles.liveText}>GPS Active</AppText></View><AppText style={styles.cardTitle}>กำลังมาหาคุณ</AppText></View>
+                                                <View style={styles.timerBadge}><AppText style={styles.timerText}>{formatTime(secondsLeft)}</AppText><AppText style={styles.timerUnit}>นาที</AppText></View>
+                                            </View>
+                                            <View style={styles.cardDivider} />
+                                            <View style={styles.dispatchedInfo}><Zap size={24} color="#FACC15" /><View style={{ marginLeft: 15 }}><AppText style={styles.unitTitle}>{HOSPITAL_COORDS.name}</AppText><AppText style={styles.unitSub}>เจ้าหน้าที่กำลังเดินทาง</AppText></View></View>
+                                        </View>
+                                        <View style={styles.checklistContainer}><AppText style={styles.checklistHeader}>ข้อปฏิบัติระหว่างรอ:</AppText>{[{ text: 'นั่งนิ่งๆ หายใจช้าๆ', bold: true }, { text: 'อมยาใต้ลิ้นทันที (ถ้ามี)', bold: true }, { text: 'ปลดกระดุมเสื้อให้หายใจสะดวก', bold: false }].map((item, i) => (<View key={i} style={styles.checkItem}><View style={[styles.checkCircle, item.bold && {borderColor: '#EF4444'}]} /><AppText style={[styles.checkText, item.bold && {fontWeight: 'bold'}]}>{item.text}</AppText></View>))}</View>
+                                        <TouchableOpacity onPress={handleCancelSOS} style={styles.cancelButton} hitSlop={{ top: 20, bottom: 20, left: 50, right: 50 }} activeOpacity={0.6} disabled={isSubmitting}>
+                                            {isSubmitting ? <ActivityIndicator size="small" color="#94A3B8" /> : <AppText style={styles.cancelButtonText}>ยกเลิกรายการเรียก</AppText>}
+                                        </TouchableOpacity>
+                                    </View>
+                                )}
                             </View>
                         </View>
                     </ScrollView>
+
+                    {/* --- Unified Settings Modal (Using CustomBottomSheet) --- */}
+                    {/* [REPLACE] ใช้ BottomSheetModal แทน CustomBottomSheet */}
+                    <BottomSheetModal
+                        ref={settingsSheetRef}
+                        index={0}
+                        snapPoints={snapPoints}
+                        backdropComponent={renderBackdrop}
+                        enablePanDownToClose={true}
+                        handleIndicatorStyle={{ backgroundColor: 'transparent' }} // [NEW] ซ่อน Handle
+                    >
+                        <BottomSheetView style={{ flex: 1 }}>
+                            {renderSettingsContent()}
+                        </BottomSheetView>
+                    </BottomSheetModal>
+
+                    {/* --- Profile Modal (Standalone CustomBottomSheet) --- */}
+                    <BottomSheetModal
+                        ref={profileSheetRef}
+                        index={0}
+                        snapPoints={snapPoints}
+                        backdropComponent={renderBackdrop}
+                        enablePanDownToClose={true}
+                        handleIndicatorStyle={{ backgroundColor: 'transparent' }} // [NEW] ซ่อน Handle
+                    >
+                         <BottomSheetScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
+                                <View style={{ padding: 20 }}>
+                                    <View style={styles.headerBar}>
+                                        <Text style={{fontSize: 20, fontWeight: '900', color: '#1E293B', marginBottom: 10}}>ข้อมูลส่วนตัว</Text>
+                                        <TouchableOpacity onPress={() => profileSheetRef.current?.dismiss()} style={{ position: 'absolute', right: 0, top: 0, padding: 10 }}>
+                                            <X size={24} color="#EF4444" />
+                                        </TouchableOpacity>
+                                    </View>
+                                    <View style={styles.medicalCard}>
+                                        <View style={styles.medicalHeaderCenter}>
+                                            <View style={styles.medicalAvatarLarge}>
+                                                {/* [FIX] Check for user profile picture and load if available, else show icon */}
+                                                {user?.picture_profile && !imageLoadError ? (
+                                                    <Image 
+                                                        source={{ uri: `https://ksvrhospital.go.th/krit-siwara_smart_heart/files/avatars/${user.picture_profile}` }}
+                                                        style={{ width: '100%', height: '100%', borderRadius: 30 }}
+                                                        resizeMode="cover"
+                                                        onError={() => setImageLoadError(true)}
+                                                    />
+                                                ) : (
+                                                    <User size={40} color="white" />
+                                                )}
+                                            </View>
+                                            <View style={{alignItems: 'center', marginTop: 10}}>
+                                                <AppText style={styles.medicalNameCenter}>{user?.name || 'ไม่ระบุชื่อ'}</AppText>
+                                                <AppText style={styles.medicalHNCenter}>HN: {user?.hn || user?.username || '-'}</AppText>
+                                            </View>
+                                        </View>
+                                        <View style={styles.medicalGrid}>
+                                            <View style={styles.medicalItem}><AppText style={styles.medicalLabel}>กรุ๊ปเลือด</AppText><AppText style={styles.medicalValueRed}>{user?.detail_medical?.blood_type || '-'}</AppText></View>
+                                            <View style={styles.medicalLine} />
+                                            <View style={styles.medicalItem}><AppText style={styles.medicalLabel}>อายุ</AppText><AppText style={styles.medicalValue}>{user?.detail_genaral?.age ? `${user.detail_genaral.age} ปี` : '-'}</AppText></View>
+                                            <View style={styles.medicalLine} />
+                                            <View style={styles.medicalItem}><AppText style={styles.medicalLabel}>โรคประจำตัว</AppText><AppText style={styles.medicalValue} numberOfLines={1}>{getCongenitalDiseases()}</AppText></View>
+                                        </View>
+                                        <View style={styles.allergyBox}>
+                                            <View style={{flexDirection: 'row', alignItems: 'center', marginBottom: 5}}><AlertTriangle size={16} color="#F59E0B" /><AppText style={styles.allergyTitle}> ประวัติการแพ้ยา</AppText></View>
+                                            <AppText style={styles.allergyText}>{user?.detail_medical?.drug_allergy_history || 'ไม่มีประวัติการแพ้ยา'}</AppText>
+                                        </View>
+
+                                        {/* [NEW] General Info Section with Email */}
+                                        <View style={styles.infoSection}>
+                                            <AppText style={styles.infoSectionTitle}>ข้อมูลทั่วไป</AppText>
+                                            
+                                            <View style={styles.infoRowSimple}>
+                                                <AppText style={styles.infoLabelSimple}>เลขบัตรประชาชน</AppText>
+                                                <AppText style={styles.infoValueSimple}>{user?.detail_genaral?.cid || '-'}</AppText>
+                                            </View>
+                                            
+                                            <View style={styles.infoRowSimple}>
+                                                <AppText style={styles.infoLabelSimple}>วันเกิด</AppText>
+                                                <AppText style={styles.infoValueSimple}>{user?.detail_genaral?.birthday || '-'}</AppText>
+                                            </View>
+
+                                            {/* Added Email Field */}
+                                            <View style={styles.infoRowSimple}>
+                                                <AppText style={styles.infoLabelSimple}>อีเมล</AppText>
+                                                <AppText style={styles.infoValueSimple} numberOfLines={1}>{user?.detail_genaral?.email || '-'}</AppText>
+                                            </View>
+
+                                            <View style={styles.infoRowSimple}>
+                                                <AppText style={styles.infoLabelSimple}>เบอร์โทรศัพท์</AppText>
+                                                <AppText style={styles.infoValueSimple}>{user?.detail_genaral?.phonenumber || '-'}</AppText>
+                                            </View>
+                                            
+                                            <View style={styles.infoRowSimple}>
+                                                <AppText style={styles.infoLabelSimple}>ที่อยู่</AppText>
+                                                <AppText style={styles.infoValueSimple}>{user?.addr?.address1 || '-'}</AppText>
+                                            </View>
+
+                                            <View style={styles.infoRowSimple}>
+                                                <AppText style={styles.infoLabelSimple}>หน่วย/สังกัด</AppText>
+                                                <AppText style={styles.infoValueSimple}>
+                                                    {user?.detail_genaral?.unit || '-'} {user?.detail_genaral?.sub ? `(${user.detail_genaral.sub})` : ''}
+                                                </AppText>
+                                            </View>
+                                        </View>
+
+                                        {/* [NEW] Medical Rights & Habits Section */}
+                                        <View style={styles.infoSection}>
+                                            <AppText style={styles.infoSectionTitle}>ข้อมูลสิทธิและการรักษา</AppText>
+
+                                            <View style={styles.infoRowSimple}>
+                                                <AppText style={styles.infoLabelSimple}>สิทธิการรักษา</AppText>
+                                                <AppText style={styles.infoValueSimple}>{user?.detail_medical?.claim_patient || '-'}</AppText>
+                                            </View>
+                                            
+                                            <View style={styles.infoRowSimple}>
+                                                <AppText style={styles.infoLabelSimple}>แพทย์เจ้าของไข้</AppText>
+                                                <AppText style={styles.infoValueSimple}>{user?.detail_medical?.doctor || '-'}</AppText>
+                                            </View>
+
+                                            <View style={styles.infoRowSimple}>
+                                                <AppText style={styles.infoLabelSimple}>สถานะสูบบุหรี่</AppText>
+                                                <AppText style={styles.infoValueSimple}>{user?.detail_medical?.cigarette || '-'}</AppText>
+                                            </View>
+                                        </View>
+
+                                        {/* Emergency Contact */}
+                                        <View style={styles.infoSection}>
+                                            <AppText style={styles.infoSectionTitle}>ผู้ติดต่อฉุกเฉิน</AppText>
+                                            <View style={styles.contactRow}>
+                                                <View style={styles.contactIcon}><Phone size={16} color="white" /></View>
+                                                <View>
+                                                    {/* [FIX] Map family_patient */}
+                                                    <AppText style={styles.contactName}>{user?.family_patient?.relation_name || 'ไม่ได้ระบุ'}</AppText>
+                                                    <AppText style={styles.contactRelation}>
+                                                        {user?.family_patient?.relationship ? `(${user.family_patient.relationship})` : ''} {user?.family_patient?.relation_tel || ''}
+                                                    </AppText>
+                                                </View>
+                                            </View>
+                                        </View>
+                                    </View>
+                                </View>
+                            </BottomSheetScrollView>
+                    </BottomSheetModal>
+                    
+                    {/* Map Modal */}
+                    <Modal animationType="slide" transparent={false} visible={showInAppMap} onRequestClose={() => setShowInAppMap(false)}>
+                        <View style={styles.mapModalContainer}>
+                            <View style={styles.mapHeader}>
+                                <View style={{ flex: 1 }}><AppText style={styles.mapHeaderTitle}>ตำแหน่งของคุณ</AppText><AppText style={styles.mapHeaderSub} numberOfLines={1}>{address}</AppText></View>
+                                <TouchableOpacity onPress={() => setShowInAppMap(false)} hitSlop={{top:20, bottom:20, left:20, right:20}}><X size={26} color="#1E293B" /></TouchableOpacity>
+                            </View>
+                            {mapRegion ? (
+                                <MapView provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined} style={{flex: 1}} initialRegion={mapRegion} showsUserLocation={true} ref={mapRef}>
+                                    <Marker coordinate={currentLocation} title="คุณอยู่ที่นี่" />
+                                    <Marker coordinate={HOSPITAL_COORDS} title={HOSPITAL_COORDS.name} pinColor="#3B82F6" />
+                                </MapView>
+                            ) : <ActivityIndicator size="large" style={{flex:1}} />}
+                        </View>
+                    </Modal>
                 </SafeAreaView>
-            </Modal>
-            
-            {/* Map Modal */}
-            <Modal animationType="slide" transparent={false} visible={showInAppMap} onRequestClose={() => setShowInAppMap(false)}>
-                <View style={styles.mapModalContainer}>
-                    <View style={styles.mapHeader}>
-                        <View style={{ flex: 1 }}><Text style={styles.mapHeaderTitle}>ตำแหน่งของคุณ</Text><Text style={styles.mapHeaderSub} numberOfLines={1}>{address}</Text></View>
-                        <TouchableOpacity onPress={() => setShowInAppMap(false)} hitSlop={{top:20, bottom:20, left:20, right:20}}><X size={26} color="#1E293B" /></TouchableOpacity>
-                    </View>
-                    {mapRegion ? (
-                        <MapView provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined} style={{flex: 1}} initialRegion={mapRegion} showsUserLocation={true} ref={mapRef}>
-                            <Marker coordinate={currentLocation} title="คุณอยู่ที่นี่" />
-                            <Marker coordinate={HOSPITAL_COORDS} title={HOSPITAL_COORDS.name} pinColor="#3B82F6" />
-                        </MapView>
-                    ) : <ActivityIndicator size="large" style={{flex:1}} />}
-                </View>
-            </Modal>
-        </SafeAreaView>
+            </BottomSheetModalProvider>
+        </GestureHandlerRootView>
     );
 };
 
@@ -938,7 +1363,21 @@ const styles = StyleSheet.create({
     appNameText: { fontSize: 16, fontWeight: '900', color: '#1E293B' },
     appNameLight: { fontWeight: '400', color: '#64748B' },
     settingsIconButton: { padding: 8, backgroundColor: 'white', borderRadius: 12, borderWidth: 1, borderColor: '#E2E8F0' },
+    loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#FFFFFF' },
+    loadingIconContainer: { marginBottom: 30, shadowColor: '#EF4444', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.2, shadowRadius: 20, elevation: 10 },
+    loadingTitle: { fontSize: 24, fontWeight: '900', color: '#1E293B', letterSpacing: 1 },
+    loadingText: { marginTop: 8, color: '#94A3B8', fontSize: 14, fontWeight: '500' },
     
+    // Bottom Sheet Styles
+    sheetContainer: { flex: 1, justifyContent: 'flex-end' },
+    sheetBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.5)' },
+    sheetContent: { backgroundColor: 'white', borderTopLeftRadius: 24, borderTopRightRadius: 24, overflow: 'hidden' }, // overflow hidden for borderRadius
+    sheetHandleContainer: { width: '100%', alignItems: 'center', paddingVertical: 10 },
+    sheetHandle: { width: 40, height: 4, backgroundColor: '#E2E8F0', borderRadius: 2 },
+    sheetHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingBottom: 15, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
+    sheetTitle: { fontSize: 18, fontWeight: 'bold', color: '#1E293B' },
+    sheetCloseButton: { padding: 4 },
+
     // Unified Card Design (Clean & Modern)
     unifiedCard: {
         backgroundColor: 'white',
@@ -1135,6 +1574,11 @@ const styles = StyleSheet.create({
         marginTop: 8,
         textAlign: 'right',
     },
+    
+    // [NEW] Font Selection Styles
+    fontSizeOption: { flexDirection: 'row', alignItems: 'center', padding: 15, borderRadius: 12, borderWidth: 1, borderColor: '#E2E8F0', backgroundColor: 'white' },
+    fontSizeOptionActive: { backgroundColor: '#EF4444', borderColor: '#EF4444' },
+    fontSizeLabel: { marginLeft: 15, flex: 1, fontSize: 16, fontWeight: '600' },
 
     // SOS Section
     mainInteractiveArea: { flex: 1, alignItems: 'center', justifyContent: 'center', marginVertical: 30 },
@@ -1180,21 +1624,68 @@ const styles = StyleSheet.create({
     modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
     settingsModalContent: { backgroundColor: 'white', padding: 25, borderTopLeftRadius: 35, borderTopRightRadius: 35, maxHeight: '85%' },
     modalHandle: { width: 50, height: 5, backgroundColor: '#E2E8F0', alignSelf: 'center', borderRadius: 5, marginBottom: 20 },
-    modalHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+    modalHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, paddingTop: 20, paddingHorizontal: 20 }, // [FIX] Added paddingTop
     modalTitle: { fontSize: 20, fontWeight: '900', color: '#1E293B' },
     modalCloseIcon: { padding: 8, backgroundColor: '#F8FAFC', borderRadius: 12 },
-    menuSection: { marginTop: 10 },
-    menuItem: { flexDirection: 'row', alignItems: 'center', padding: 15, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
-    menuItemText: { flex: 1, fontSize: 15, fontWeight: 'bold', color: '#334155', marginLeft: 15 },
+    
+    // [NEW] Menu Styles for Card Look
+    menuSection: { marginTop: 15, paddingHorizontal: 20 }, // เพิ่ม padding ด้านข้าง
+    menuGroupTitle: { fontSize: 12, fontWeight: 'bold', color: '#94A3B8', marginBottom: 10, marginLeft: 5, textTransform: 'uppercase' },
+    menuIconBox: { width: 36, height: 36, borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginRight: 15 },
+    
+    // [UPDATED] MenuItem as Card
+    menuItem: { 
+        flexDirection: 'row', 
+        alignItems: 'center', 
+        padding: 16, 
+        backgroundColor: '#FFFFFF', // พื้นหลังขาว
+        borderRadius: 16, // ขอบมน
+        marginBottom: 10, // เว้นระยะห่างระหว่างรายการ
+        borderWidth: 1, 
+        borderColor: '#F1F5F9',
+        // Shadow Effect
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.03,
+        shadowRadius: 4,
+        elevation: 2
+    },
+    menuItemText: { flex: 1, fontSize: 15, fontWeight: 'bold', color: '#334155' },
+    
     logoutButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#FEF2F2', paddingVertical: 16, borderRadius: 20, marginTop: 20, gap: 10 },
     logoutText: { fontSize: 15, fontWeight: 'bold', color: '#EF4444' },
 
-    // Medical Card (Profile View)
+    // Input Fields
+    formGroup: { marginBottom: 20 },
+    inputLabel: { fontSize: 13, fontWeight: 'bold', color: '#475569', marginBottom: 8 },
+    inputField: { backgroundColor: '#F8FAFC', borderRadius: 12, borderWidth: 1, borderColor: '#E2E8F0', padding: 14, fontSize: 15, color: '#1E293B' },
+    passwordContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F8FAFC', borderRadius: 12, borderWidth: 1, borderColor: '#E2E8F0', paddingHorizontal: 14 },
+    passwordInput: { flex: 1, paddingVertical: 14, fontSize: 15, color: '#1E293B' },
+    eyeIcon: { padding: 4 },
+    saveButton: { backgroundColor: '#EF4444', borderRadius: 16, padding: 16, alignItems: 'center', marginTop: 10 },
+    saveButtonText: { color: 'white', fontSize: 16, fontWeight: 'bold' },
+
+    // Contact
+    contactCard: { alignItems: 'center', padding: 20, backgroundColor: '#F8FAFC', borderRadius: 20, borderWidth: 1, borderColor: '#F1F5F9' },
+    contactTitle: { fontSize: 18, fontWeight: 'bold', color: '#1E293B', marginBottom: 5 },
+    contactSubtitle: { fontSize: 14, color: '#64748B', marginBottom: 20 },
+    callButton: { backgroundColor: '#3B82F6', paddingVertical: 12, paddingHorizontal: 30, borderRadius: 12, width: '100%', alignItems: 'center' },
+    callButtonText: { color: 'white', fontSize: 15, fontWeight: 'bold' },
+    
+    // About
+    aboutContainer: { alignItems: 'center', padding: 20 },
+    aboutAppName: { fontSize: 20, fontWeight: 'bold', color: '#1E293B', marginTop: 15, marginBottom: 5 },
+    aboutVersion: { fontSize: 13, color: '#94A3B8', marginBottom: 20 },
+    aboutDesc: { fontSize: 14, color: '#64748B', textAlign: 'center', lineHeight: 22 },
+    placeholderContainer: { alignItems: 'center', justifyContent: 'center', padding: 40 },
+    placeholderText: { marginTop: 15, fontSize: 14, color: '#94A3B8' },
+    
+    // Common
     medicalCard: { backgroundColor: '#F8FAFC', borderRadius: 25, padding: 20, borderWidth: 1, borderColor: '#F1F5F9', marginBottom: 20 },
     medicalHeaderCenter: { alignItems: 'center', marginBottom: 20, paddingTop: 10 },
-    medicalAvatarLarge: { width: 80, height: 80, borderRadius: 30, backgroundColor: '#EF4444', justifyContent: 'center', alignItems: 'center', marginBottom: 10, shadowColor: '#EF4444', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 5 },
+    medicalAvatarLarge: { width: 80, height: 80, borderRadius: 30, backgroundColor: '#EF4444', justifyContent: 'center', alignItems: 'center', marginBottom: 10 },
     medicalNameCenter: { fontSize: 22, fontWeight: '900', color: '#1E293B', textAlign: 'center' },
-    medicalHNCenter: { fontSize: 14, color: '#64748B', marginTop: 4, fontWeight: '500' },
+    medicalHNCenter: { fontSize: 14, color: '#64748B', marginTop: 4 },
     medicalGrid: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
     medicalItem: { alignItems: 'center', flex: 1 },
     medicalLabel: { fontSize: 10, fontWeight: '900', color: '#94A3B8', marginBottom: 4 },
@@ -1210,12 +1701,18 @@ const styles = StyleSheet.create({
     contactRelation: { fontSize: 11, color: '#64748B' },
     infoSection: { marginBottom: 20 },
     infoSectionTitle: { fontSize: 12, fontWeight: '900', color: '#94A3B8', textTransform: 'uppercase', marginBottom: 10 },
-    infoRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 },
-    infoCol: { flex: 1 },
-    infoLabel: { fontSize: 11, color: '#64748B', marginBottom: 2 },
-    infoValue: { fontSize: 14, fontWeight: '600', color: '#1E293B' },
-    medicationBox: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'white', padding: 12, borderRadius: 12, borderWidth: 1, borderColor: '#E2E8F0' },
-    medicationText: { fontSize: 13, color: '#334155', fontWeight: '500' },
+    infoRowSimple: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12, borderBottomWidth: 1, borderBottomColor: '#E2E8F0', paddingBottom: 8 },
+    infoLabelSimple: { fontSize: 13, color: '#64748B', flex: 1 },
+    infoValueSimple: { fontSize: 13, fontWeight: '600', color: '#1E293B', flex: 1.5, textAlign: 'right' },
+    
+    // Terms Styles
+    termsContainer: { flex: 1, backgroundColor: 'white' },
+    termsHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingBottom: 20, paddingTop: Platform.OS === 'ios' ? 60 : 20, borderBottomWidth: 1, borderBottomColor: '#F1F5F9', backgroundColor: 'white', zIndex: 10 },
+    termsTitle: { fontSize: 18, fontWeight: 'bold', color: '#1E293B' },
+    termsContent: { padding: 20 },
+    termsHeading: { fontSize: 16, fontWeight: 'bold', color: '#1E293B', marginTop: 15, marginBottom: 8 },
+    termsText: { fontSize: 14, color: '#64748B', lineHeight: 22, textAlign: 'justify' },
+    headerBackButton: { padding: 10, backgroundColor: '#F1F5F9', borderRadius: 14, zIndex: 20 },
     
     // Map Styles
     mapModalContainer: { flex: 1, backgroundColor: 'white' },
@@ -1232,27 +1729,13 @@ const styles = StyleSheet.create({
     distanceText: { fontSize: 14, fontWeight: 'bold', color: '#334155' },
     externalMapLink: { paddingHorizontal: 15, paddingVertical: 10, backgroundColor: '#F8FAFC', borderRadius: 12, borderWidth: 1, borderColor: '#E2E8F0' },
     externalMapText: { color: '#3B82F6', fontWeight: 'bold', fontSize: 12 },
-
-    // Terms Styles
-    termsContainer: { flex: 1, backgroundColor: 'white' },
-    termsHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingBottom: 20, paddingTop: Platform.OS === 'ios' ? 60 : 20, borderBottomWidth: 1, borderBottomColor: '#F1F5F9', backgroundColor: 'white', zIndex: 10 },
-    termsTitle: { fontSize: 18, fontWeight: 'bold', color: '#1E293B' },
-    termsContent: { padding: 20 },
-    termsHeading: { fontSize: 16, fontWeight: 'bold', color: '#1E293B', marginTop: 15, marginBottom: 8 },
-    termsText: { fontSize: 14, color: '#64748B', lineHeight: 22, textAlign: 'justify' },
-    headerBackButton: { padding: 10, backgroundColor: '#F1F5F9', borderRadius: 14, zIndex: 20 },
 });
+
 
 export default HomeScreen;
 
-// เพิ่มตรรกะการคำนวณ เวลาเดินทางโดยประมาณ (ETA) ที่สัมพันธ์กับระยะทางจริงจาก รพ.ค่ายกฤษณ์สีวะรา 
-// โดยใช้ความเร็วเฉลี่ยของรถพยาบาลในสถานการณ์ฉุกเฉินครับ
-// เพิ่มฟังก์ชัน calculateTravelTime ซึ่งจะนำค่า distance (กิโลเมตร) มาคำนวณเป็นเวลาที่รถพยาบาลจะมาถึงจริง 
-// โดยกำหนดความเร็วเฉลี่ยไว้ที่ 40 กม./ชม. พร้อมเพิ่มเวลาเตรียมตัว 2 นาที และกำหนดขั้นต่ำไว้ที่ 3 นาทีครับ 
-// ตัวนับถอยหลังจะเริ่มจากค่าที่คำนวณได้นี้ทันทีที่คุณกดปุ่มฉุกเฉินครับ สรุปคือตอนนี้ทั้งระยะทางและเวลาจะอัปเดตสัมพันธ์กันอย่างสมจริงครับ
-
 //สิ่งที่ปรับปรุงในเวอร์ชันนี้:
-// 1. Dynamic ETA Logic: คำนวณเวลาเริ่มต้นของตัวนับถอยหลังโดยอ้างอิงจากระยะทาง (สมมติความเร็วเฉลี่ยรถพยาบาลที่ 40 กม./ชม. รวมเวลาเตรียมตัวออกเหตุ)
+// 1. Dynamic ETA Logic: คำนวณเวลาเริ่มต้นของตัวนับถอยหลังโดยอ้างอิงจากระยะทาง (สมมติความเร็วเฉลี่ยรถพยาบาลที่ 60 กม./ชม. รวมเวลาเตรียมตัวออกเหตุ)
 
 // 2. Minimum Response Time: กำหนดเวลาขั้นต่ำไว้ที่ 3 นาที (180 วินาที) เพราะแม้ระยะทางจะใกล้มาก แต่ทีมกู้ชีพต้องใช้เวลาในการเตรียมอุปกรณ์และเคลื่อนที่
 
@@ -1264,11 +1747,11 @@ export default HomeScreen;
 
 // 6. Enhanced Error Handling: ปรับปรุงการจัดการข้อผิดพลาดในการดึงพิกัดและแสดงข้อความที่ชัดเจนยิ่งขึ้น
 
-// 7. UI/UX Improvements: ปรับปรุงดีไซน์บางส่วนให้ใช้งานง่ายและดูทันสมัยยิ่งขึ้น
+// 7. เพิ่ม การเปลี่ยนรหัสผ่าน (Change Password) ในหน้าตั้งค่า 
 
-// 8. เพิ่ม Modal แสดง ข้อกำหนดการใช้บริการ (Terms of Service) ในหน้าตั้งค่า
+// 8. เพิ่ม ข้อกำหนดการใช้บริการ (Terms of Service) ในหน้าตั้งค่า
 
-// 9. เพิ่ม Modal แสดง นโยบายความเป็นส่วนตัว (Privacy Policy) ในหน้าตั้งค่า
+// 9. เพิ่ม นโยบายความเป็นส่วนตัว (Privacy Policy) ในหน้าตั้งค่า
 
 // 10. การทำให้แผนที่ใน Modal ขยับตามพิกัดผู้ใช้แบบอัตโนมัติ (Live Map Camera) และ ปรับมุมกล้องให้เห็นทั้ง "เรา" และ "รพ." พร้อมกัน เพื่อให้เห็นระยะห่างจริง
 
@@ -1277,3 +1760,7 @@ export default HomeScreen;
 // 12. มีการเข้าสู่ระบบจากอุปกรณ์อื่น ๆ จะแจ้งเตือนผู้ใช้ในแอปทันที และบังคับให้ลงชื่อออก (Logout) เพื่อความปลอดภัยของบัญชีผู้ใช้
 
 // 13. เพิ่ม biometric authentication (ลายนิ้วมือ/Face ID) ในการเข้าดูข้อมูลส่วนตัวเพื่อความปลอดภัยยิ่งขึ้น
+
+// 14. เปลี่ยนขนาดตัวอักษรในแอปเป็นแบบไดนามิกตามที่ผู้ใช้เลือกในหน้าตั้งค่า (ขนาดเล็ก, ปกติ, ใหญ่)
+
+// 15. UI/UX Improvements: ปรับปรุงดีไซน์บางส่วนให้ใช้งานง่ายและดูทันสมัยยิ่งขึ้น

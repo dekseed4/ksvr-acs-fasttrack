@@ -14,17 +14,23 @@
     },
     "ios": {
       "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "แอปต้องการเข้าถึงตำแหน่งเพื่อส่งรถพยาบาลไปหาคุณ",
-        "NSFaceIDUsageDescription": "ขออนุญาตใช้ FaceID เพื่อยืนยันตัวตนก่อนเข้าถึงข้อมูลสุขภาพส่วนบุคคล"
+        "NSLocationWhenInUseUsageDescription": "แอปต้องการเข้าถึงตำแหน่งเพื่อส่งรถพยาบาลไปหาคุณและค้นหาโรงพยาบาลที่ใกล้ที่สุดและนำทางไปยังจุดหมาย",
+        "NSFaceIDUsageDescription": "ขออนุญาตใช้ FaceID เพื่อยืนยันตัวตนก่อนเข้าถึงข้อมูลสุขภาพส่วนบุคคล",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "แอปต้องการเข้าถึงตำแหน่งของคุณเพื่อแจ้งเตือนเมื่ออยู่ใกล้โรงพยาบาล"
       },
       "bundleIdentifier": "com.ksvr.acsfasttrack",
       "buildNumber": "1.0.0",
       "supportsTablet": true,
-       "config": {
+      "config": {
         "usesNonExemptEncryption": false
       }
     },
     "android": {
+      "config": {
+        "googleMaps": {
+          "apiKey": "ใส่_GOOGLE_MAPS_API_KEY_ของคุณที่นี่"
+        }
+      },
       "permissions": [
         "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION"
@@ -42,13 +48,14 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-       [
+      [
         "expo-secure-store",
         {
           "configureAndroidBackup": true,
           "faceIDPermission": "Allow $(PRODUCT_NAME) to access your Face ID biometric data."
         }
-      ]
+      ],
+      "expo-maps"
     ]
   }
 }

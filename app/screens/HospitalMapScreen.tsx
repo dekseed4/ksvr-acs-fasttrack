@@ -1,20 +1,22 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, Dimensions, TouchableOpacity, Alert, Platform, Linking, ActivityIndicator } from 'react-native';
-import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
+import { View, Text, StyleSheet, Dimensions, TouchableOpacity, Alert, Platform, Linking, ActivityIndicator, Image } from 'react-native';
+import MapView, { Marker, PROVIDER_GOOGLE, Region } from 'react-native-maps'; // ใช้ตัวมาตรฐาน
 import * as Location from 'expo-location';
 import { Navigation, Phone, MapPin } from 'lucide-react-native';
-import axios from 'axios';
 
-// 🔴 1. ใส่ API Key ของคุณตรงนี้
-const GOOGLE_API_KEY = "AIzaSyAefNsLzWi69v_TwczP6U2HHwzOYhYydhs"; 
+// ข้อมูลจำลอง (Mock Data) - หรือจะดึงจาก API ก็ได้
+const HOSPITALS = [
+    { id: 1, name: "รพ.ค่ายกฤษณ์สีวะรา", address: "อ.เมือง จ.สกลนคร", latitude: 17.1352, longitude: 104.1465, phone: "042-123456" },
+    { id: 2, name: "รพ.ศูนย์สกลนคร", address: "ใจกลางเมืองสกลนคร", latitude: 17.1662, longitude: 104.1480, phone: "042-711711" },
+    { id: 3, name: "รพ.รักษ์สกล", address: "ถ.รัฐพัฒนา", latitude: 17.1580, longitude: 104.1350, phone: "042-712888" },
+];
 
-// ฟังก์ชันคำนวณระยะทาง (ใช้เพื่อแสดงผลว่าห่างกี่ กม.)
+// ฟังก์ชันคำนวณระยะทาง (km)
 const getDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
-    const R = 6371; // รัศมีโลก (km)
+    const R = 6371; 
     const dLat = (lat2 - lat1) * (Math.PI / 180);
     const dLon = (lon2 - lon1) * (Math.PI / 180);
-    const a = 
-        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
         Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     return R * c;
@@ -22,98 +24,56 @@ const getDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => 
 
 const HospitalMapScreen = () => {
     const [location, setLocation] = useState<Location.LocationObject | null>(null);
-    const [hospitals, setHospitals] = useState<any[]>([]); // เก็บข้อมูลจาก API
     const [nearestHospital, setNearestHospital] = useState<any>(null);
     const [selectedHospital, setSelectedHospital] = useState<any>(null);
-    const [loading, setLoading] = useState(true);
-    const mapRef = useRef<MapView>(null);
-
-    // ฟังก์ชันดึงข้อมูลจาก Google Places API
-    const fetchNearbyHospitals = async (lat: number, lng: number) => {
-        try {
-            const radius = 5000; // รัศมีค้นหา 5 กิโลเมตร
-            const url = `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${lat},${lng}&radius=${radius}&type=hospital&language=th&key=${GOOGLE_API_KEY}`;
-            
-            const response = await axios.get(url);
-            
-            if (response.data.status === 'OK') {
-                const places = response.data.results.map((place: any) => ({
-                    id: place.place_id,
-                    name: place.name,
-                    address: place.vicinity, // Google ให้ที่อยู่มาใน field นี้
-                    latitude: place.geometry.location.lat,
-                    longitude: place.geometry.location.lng,
-                    rating: place.rating,
-                    // หมายเหตุ: nearbysearch ปกติจะไม่คืนเบอร์โทร ต้องใช้ Place Details API เพิ่มถ้าต้องการ
-                }));
-                return places;
-            } else {
-                console.error("Google API Error:", response.data.status);
-                return [];
-            }
-        } catch (error) {
-            console.error("Fetch error:", error);
-            return [];
-        }
-    };
+    const mapRef = useRef<MapView>(null); // Ref สำหรับควบคุมแผนที่
 
     useEffect(() => {
         (async () => {
-            // 1. ขอสิทธิ์ Location
+            // 1. ขอ Permission
             let { status } = await Location.requestForegroundPermissionsAsync();
             if (status !== 'granted') {
-                Alert.alert('Permission denied', 'กรุณาเปิด GPS เพื่อค้นหาโรงพยาบาล');
-                setLoading(false);
+                Alert.alert('Permission denied', 'กรุณาเปิด GPS เพื่อใช้งาน');
                 return;
             }
 
-            // 2. หาตำแหน่งปัจจุบัน
+            // 2. หาตำแหน่งเรา
             let userLocation = await Location.getCurrentPositionAsync({});
             setLocation(userLocation);
 
-            // 3. เรียก API ค้นหาโรงพยาบาล
-            const places = await fetchNearbyHospitals(
-                userLocation.coords.latitude, 
-                userLocation.coords.longitude
-            );
+            // 3. คำนวณหารพ.ที่ใกล้ที่สุด
+            let minDistance = Infinity;
+            let nearest = null;
 
-            // 4. คำนวณหาระยะทางและหาอันที่ใกล้ที่สุด
-            if (places.length > 0) {
-                let minDistance = Infinity;
-                let nearest = null;
+            const updatedHospitals = HOSPITALS.map(hospital => {
+                const dist = getDistance(
+                    userLocation.coords.latitude,
+                    userLocation.coords.longitude,
+                    hospital.latitude,
+                    hospital.longitude
+                );
+                if (dist < minDistance) {
+                    minDistance = dist;
+                    nearest = { ...hospital, distance: dist };
+                }
+                return { ...hospital, distance: dist };
+            });
 
-                const placesWithDistance = places.map((h: any) => {
-                    const dist = getDistance(
-                        userLocation.coords.latitude,
-                        userLocation.coords.longitude,
-                        h.latitude,
-                        h.longitude
-                    );
-                    if (dist < minDistance) {
-                        minDistance = dist;
-                        nearest = { ...h, distance: dist };
-                    }
-                    return { ...h, distance: dist };
-                });
+            setNearestHospital(nearest);
+            setSelectedHospital(nearest);
 
-                setHospitals(placesWithDistance);
-                setNearestHospital(nearest);
-                setSelectedHospital(nearest);
-
-                // Zoom แผนที่
+            // 4. สั่งให้แผนที่ Zoom ไปหาจุดที่เราอยู่และรพ. (Animation)
+            if (nearest && mapRef.current) {
                 setTimeout(() => {
                     mapRef.current?.fitToCoordinates([
                         { latitude: userLocation.coords.latitude, longitude: userLocation.coords.longitude },
                         { latitude: nearest.latitude, longitude: nearest.longitude }
                     ], {
-                        edgePadding: { top: 50, right: 50, bottom: 250, left: 50 },
+                        edgePadding: { top: 50, right: 50, bottom: 250, left: 50 }, // เว้นระยะขอบ (bottom เยอะหน่อยเพราะมีการ์ดบัง)
                         animated: true,
                     });
-                }, 1000);
-            } else {
-                Alert.alert("ไม่พบข้อมูล", "ไม่พบโรงพยาบาลในระแวกใกล้เคียง");
+                }, 1000); // รอ map โหลดแป๊บนึง
             }
-            setLoading(false);
         })();
     }, []);
 
@@ -129,34 +89,33 @@ const HospitalMapScreen = () => {
 
     return (
         <View style={styles.container}>
-            {loading && (
-                <View style={styles.loadingOverlay}>
-                    <ActivityIndicator size="large" color="#007AFF" />
-                    <Text style={{ marginTop: 10 }}>กำลังค้นหาโรงพยาบาล...</Text>
-                </View>
-            )}
-
             <MapView
                 ref={mapRef}
                 style={styles.map}
-                provider={PROVIDER_GOOGLE}
+                // ถ้าเป็น Android ให้ใช้ Google Maps, ถ้า iOS ให้ใช้ Apple Maps (ไม่ใส่ provider)
+                provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
                 showsUserLocation={true}
                 showsMyLocationButton={true}
                 initialRegion={{
-                    latitude: 17.16, // ค่าเริ่มต้น (ถ้ายังโหลดไม่เสร็จ)
+                    latitude: 17.16,
                     longitude: 104.14,
                     latitudeDelta: 0.0922,
                     longitudeDelta: 0.0421,
                 }}
             >
-                {hospitals.map((hospital) => (
+                {HOSPITALS.map((hospital) => (
                     <Marker
                         key={hospital.id}
                         coordinate={{ latitude: hospital.latitude, longitude: hospital.longitude }}
                         title={hospital.name}
-                        // ใช้สีแดงถ้าเป็นอันที่เลือกอยู่ หรือเป็นอันที่ใกล้ที่สุด
+                        description={hospital.address}
+                        // สีแดง = ใกล้สุด หรือ ถูกเลือกอยู่
                         pinColor={hospital.id === selectedHospital?.id ? "red" : "orange"}
-                        onPress={() => setSelectedHospital(hospital)}
+                        onPress={() => setSelectedHospital({
+                            ...hospital,
+                            // คำนวณระยะทางใหม่เผื่อ user ขยับ หรือใช้ค่าเดิม
+                            distance: location ? getDistance(location.coords.latitude, location.coords.longitude, hospital.latitude, hospital.longitude) : 0
+                        })}
                     />
                 ))}
             </MapView>
@@ -166,11 +125,11 @@ const HospitalMapScreen = () => {
                 <View style={styles.cardContainer}>
                     <View style={styles.cardHeader}>
                         <View style={{ flex: 1 }}>
-                            <Text style={styles.hospitalName} numberOfLines={1}>{selectedHospital.name}</Text>
-                            <Text style={styles.hospitalAddress} numberOfLines={2}>{selectedHospital.address}</Text>
+                            <Text style={styles.hospitalName}>{selectedHospital.name}</Text>
+                            <Text style={styles.hospitalAddress}>{selectedHospital.address}</Text>
                             <Text style={styles.distanceText}>
-                                ห่างจากคุณ {selectedHospital.distance?.toFixed(2)} กม.
-                                {selectedHospital.id === nearestHospital?.id && " (ใกล้ที่สุด)"}
+                                {selectedHospital.id === nearestHospital?.id ? "📍 ใกล้ที่สุด " : ""}
+                                ห่าง {selectedHospital.distance?.toFixed(2)} กม.
                             </Text>
                         </View>
                         <View style={styles.iconContainer}>
@@ -187,14 +146,12 @@ const HospitalMapScreen = () => {
                             <Text style={styles.buttonText}>นำทาง</Text>
                         </TouchableOpacity>
 
-                        {/* ปุ่มโทร (Google Nearby Search ไม่ให้เบอร์มา อาจต้องซ่อนหรือใช้เบอร์กลาง 1669 แทน) */}
                         <TouchableOpacity 
                             style={[styles.button, styles.callButton]}
-                            // เนื่องจาก API ค้นหาเบื้องต้นไม่ให้เบอร์ จึงแนะนำให้โทร 1669 หรือเบอร์กลางแทน
-                            onPress={() => Linking.openURL(`tel:1669`)} 
+                            onPress={() => Linking.openURL(`tel:${selectedHospital.phone}`)}
                         >
                             <Phone color="#007AFF" size={20} />
-                            <Text style={[styles.buttonText, { color: '#007AFF' }]}>ฉุกเฉิน (1669)</Text>
+                            <Text style={[styles.buttonText, { color: '#007AFF' }]}>โทร</Text>
                         </TouchableOpacity>
                     </View>
                 </View>
@@ -206,27 +163,20 @@ const HospitalMapScreen = () => {
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#fff' },
     map: { width: Dimensions.get('window').width, height: Dimensions.get('window').height },
-    loadingOverlay: {
-        ...StyleSheet.absoluteFillObject,
-        backgroundColor: 'rgba(255,255,255,0.9)',
-        justifyContent: 'center',
-        alignItems: 'center',
-        zIndex: 10,
-    },
     cardContainer: {
         position: 'absolute',
-        bottom: 30,
+        bottom: 25, // ยกขึ้นมาจากขอบล่าง
         left: 20,
         right: 20,
         backgroundColor: 'white',
-        borderRadius: 15,
+        borderRadius: 16,
         padding: 20,
-        // Shadow
+        // Shadow ให้ดูมีมิติ
         shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.25,
-        shadowRadius: 3.84,
-        elevation: 5,
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.2,
+        shadowRadius: 5,
+        elevation: 10,
     },
     cardHeader: {
         flexDirection: 'row',
@@ -236,9 +186,8 @@ const styles = StyleSheet.create({
     },
     iconContainer: {
         backgroundColor: '#FFEBEE',
-        padding: 10,
+        padding: 12,
         borderRadius: 50,
-        marginLeft: 10,
     },
     hospitalName: {
         fontSize: 18,
@@ -248,17 +197,17 @@ const styles = StyleSheet.create({
     hospitalAddress: {
         fontSize: 14,
         color: '#666',
-        marginTop: 2,
+        marginTop: 4,
     },
     distanceText: {
         fontSize: 14,
         color: '#2E7D32',
         fontWeight: '600',
-        marginTop: 5,
+        marginTop: 6,
     },
     buttonGroup: {
         flexDirection: 'row',
-        gap: 10,
+        gap: 12,
     },
     button: {
         flex: 1,
@@ -266,21 +215,19 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         alignItems: 'center',
         paddingVertical: 12,
-        borderRadius: 8,
+        borderRadius: 10,
         gap: 8,
     },
     navButton: {
         backgroundColor: '#007AFF',
     },
     callButton: {
-        backgroundColor: '#F0F8FF',
-        borderWidth: 1,
-        borderColor: '#007AFF',
+        backgroundColor: '#F5F5F5',
     },
     buttonText: {
-        color: 'white',
         fontWeight: 'bold',
         fontSize: 16,
+        color: 'white',
     }
 });
 
