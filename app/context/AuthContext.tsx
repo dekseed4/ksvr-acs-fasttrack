@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import axios from "axios";
 import * as SecureStore from "expo-secure-store";
-import { Alert } from 'react-native';
+import { Alert, Platform } from 'react-native';
 
 export interface UserProfile {
     name: string;
@@ -22,7 +22,8 @@ interface AuthProps {
 
 const TOKEN_KEY = "my-jwt";
 import { API_URL } from '../config';
-const AuthContext = createContext<AuthProps>({});
+import { usePushNotifications } from "../hooks/usePushNotifications";
+const AuthContext = createContext<AuthProps>({} as AuthProps);
 
 export const useAuth = () => {
     return useContext(AuthContext);
@@ -31,7 +32,8 @@ export const useAuth = () => {
 export const AuthProvider = ({ children }: any) => {
 
     const [isLoading, setIsLoading] = useState(true);
-    
+    const { expoPushToken, notification } = usePushNotifications();
+
     const [authState, setAuthState] = useState<{ 
         token: string | null; 
         authenticated: boolean | null;
@@ -83,11 +85,31 @@ export const AuthProvider = ({ children }: any) => {
         };
     }, []); // ทำงานครั้งเดียวตอนเริ่มแอป
     
+useEffect(() => {
+    if (expoPushToken && authState?.authenticated && authState?.token) {
+        console.log("Sending token:", expoPushToken); // 1. เช็คดูว่า Token หน้าตาเป็นยังไง
+
+        axios.post(`${API_URL}/update-device-tokens`, { // <-- เช็ค URL ด้วยว่าใน Laravel มี s หรือไม่มี s
+            token: typeof expoPushToken === 'object' ? expoPushToken.data : expoPushToken, // กันเหนียว
+            platform: Platform.OS
+        })
+        .then((response) => {
+             console.log("✅ Success:", response.data);
+        })
+        .catch(err => { 
+            // --- แก้ตรงนี้ครับ เพื่อดูไส้ในของ Error 500 ---
+            console.log("❌ Error Status:", err.response?.status);
+            console.log("❌ Error Detail:", JSON.stringify(err.response?.data, null, 2)); 
+            // มันจะพ่น Error จาก Laravel ออกมาตรงนี้เลย
+        });
+    }
+}, [expoPushToken, authState?.authenticated]);
+  
     useEffect(() => {
         const loadToken = async () => {
             try { // <--- ใส่ try-catch ครอบทั้งหมด
                 const token = await SecureStore.getItemAsync(TOKEN_KEY);
-
+ 
                 if (token) {
                     axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
 

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { AuthProvider, useAuth } from './app/context/AuthContext';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -12,7 +12,7 @@ import HospitalMapScreen from './app/screens/HospitalMapScreen';
 import KnowledgeScreen from './app/screens/KnowledgeScreen';
 import TermsConsentScreen from './app/screens/TermsConsentScreen';
 import { ThemeProvider } from './app/context/ThemeContext';
-import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
+import { View, Text, ActivityIndicator, StyleSheet, Platform } from 'react-native';
 import { AppText } from './app/components/AppText';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
@@ -70,9 +70,9 @@ export default function App() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
         <BottomSheetModalProvider>
-            <AuthProvider>
+            <AuthProvider> 
                 <ThemeProvider>
-                    <Layout></Layout>
+                    <Layout />
                 </ThemeProvider>
             </AuthProvider>
         </BottomSheetModalProvider>
@@ -82,7 +82,7 @@ export default function App() {
 
 export const Layout = () => {
     const { authState, isLoading } = useAuth();
-
+    
     // เช็คเงื่อนไข (ต้องมั่นใจว่า authState.user ไม่ใช่ null ก่อนเช็ค term_accepted_at)
     const showConsentScreen = authState?.user && !authState.user.term_accepted_at;
 
@@ -106,14 +106,14 @@ export const Layout = () => {
                     showConsentScreen ? (
                         <Stack.Screen name="TermsConsentScreen" component={TermsConsentScreen} />
                     ) : (
-                        <>
+                        <Stack.Group>
                             <Stack.Screen name="AppTabs" component={AppTabs} />
                             <Stack.Screen 
                                 name="Profile" 
                                 component={ProfileScreen} 
                                 options={{ headerShown: false }} 
                             />
-                        </>
+                        </Stack.Group>
                     )
                 ) : (
                     <Stack.Screen name="Login" component={LoginScreen} />

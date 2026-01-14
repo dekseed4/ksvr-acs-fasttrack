@@ -57,6 +57,12 @@
         }
       ],
       "expo-maps"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "59bf3cb6-e43e-4089-a908-b76c578ae8f1"
+      }
+    },
+    "owner": "dekseed"
   }
 }
