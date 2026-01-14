@@ -20,6 +20,7 @@ import {
   PanResponder,
 } from 'react-native';
 
+import { useNavigation } from '@react-navigation/native'; 
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { 
   BottomSheetModal, 
@@ -84,9 +85,35 @@ const { width, height } = Dimensions.get('window');
 
 import { HOSPITAL_COORDS } from '../config';
 
+// --- Component ปุ่มเมนูสไตล์ LINE (วางไว้นอก HomeScreen) ---
+const LineMenuItem = ({ icon: Icon, color, label, onPress, isDestructive = false }) => (
+  <TouchableOpacity 
+    style={styles.lineMenuItem} 
+    onPress={onPress}
+    activeOpacity={0.7}
+  >
+    {/* ไอคอนด้านซ้าย */}
+    <View style={[styles.lineMenuIconBox, { backgroundColor: isDestructive ? '#FEF2F2' : '#F1F5F9' }]}>
+      <Icon size={22} color={isDestructive ? '#EF4444' : (color || '#334155')} />
+    </View>
+
+    {/* ข้อความ */}
+    <View style={styles.lineMenuTextBox}>
+      <AppText style={[styles.lineMenuText, isDestructive && { color: '#EF4444' }]}>
+        {label}
+      </AppText>
+    </View>
+
+    {/* ลูกศรขวา (แสดงเฉพาะเมนูปกติ) */}
+    {!isDestructive && <ChevronRight size={20} color="#CBD5E1" />}
+  </TouchableOpacity>
+);
+
 const HomeScreen = () => {
     const { setUserData, onLogout, authState } = useAuth(); // ดึง Token และฟังก์ชัน Logout
     const user = authState?.user; // ข้อมูลโปรไฟล์ผู้ใช้
+
+    const navigation = useNavigation();
 
     // ใช้งาน Theme Context
     const { fontScale, changeFontScale } = useTheme();
@@ -98,7 +125,6 @@ const HomeScreen = () => {
     
     // --- Settings Modal State Management ---
     const settingsSheetRef = useRef(null);
-    const profileSheetRef = useRef(null);
     // Snap points: 90% ของหน้าจอ
     const snapPoints = useMemo(() => ['90%'], []);
     const [settingsView, setSettingsView] = useState('main'); 
@@ -153,12 +179,14 @@ const HomeScreen = () => {
    // --- [NEW] Backdrop for Bottom Sheet ---
     const renderBackdrop = useCallback(
         props => (
-          <BottomSheetBackdrop
-            {...props}
-            disappearsOnIndex={-1}
-            appearsOnIndex={0}
-            opacity={0.5}
-          />
+            <BottomSheetBackdrop
+                {...props}
+                disappearsOnIndex={-1}
+                appearsOnIndex={0}
+                opacity={0.5}
+                pressBehavior="close"
+                style={[StyleSheet.absoluteFillObject, { backgroundColor: 'rgba(0,0,0,0.5)' }]} 
+            />
         ),
         []
     );
@@ -677,251 +705,275 @@ const HomeScreen = () => {
 
     const strokeDashoffset = circumference - (pressProgress / 100) * circumference;
 
-    // Helper: แปลง array ของโรคเป็น string
-    const getCongenitalDiseases = () => {
-        if (!user?.detail_medical?.patient_congenital_disease) return '-';
-        if (Array.isArray(user.detail_medical.patient_congenital_disease)) {
-             return user.detail_medical.patient_congenital_disease.map(d => d.name).join(', ') || 'ไม่มีโรคประจำตัว';
-        }
-        return '-';
-    };
+    // --- Render Content for Settings Modal ---
+    const renderSettingsContent = useCallback(() => {
+        // 1. กำหนด Title และ Content ตาม settingsView
+        let title = 'ตั้งค่า';
+        let content = null;
+        let isMain = settingsView === 'main';
 
+        if (settingsView === 'main') {
+            title = 'ตั้งค่า';
+            // ใช้ Layout ใหม่สไตล์ LINE
+            content = (
+                <View style={{ paddingHorizontal: 20, paddingBottom: 40 }}>
+                    
+                    {/* กลุ่มที่ 1: บัญชี */}
+                    <AppText style={styles.menuGroupTitle}>บัญชีของฉัน</AppText>
+                    <View style={styles.menuGroupContainer}>
+                        <LineMenuItem 
+                            icon={UserCircle} 
+                            color="#3B82F6" 
+                            label="ข้อมูลส่วนตัว (Medical ID)" 
+                            onPress={() => {
+                                authenticateUser(() => {
+                                    settingsSheetRef.current?.dismiss();
+                                    navigation.navigate('Profile');
+                                });
+                            }} 
+                        />
+                        <View style={styles.separator} />
+                        <LineMenuItem 
+                            icon={Key} 
+                            color="#F59E0B" 
+                            label="เปลี่ยนรหัสผ่าน" 
+                            onPress={() => setSettingsView('password')} 
+                        />
+                    </View>
 
-   // --- Render Content for Settings Modal ---
-    const renderSettingsContent = () => {
-        const renderHeader = (title) => (
-            <View style={styles.modalHeaderRow}>
-                {/* [UPDATE] ใช้ View 3 ช่อง เพื่อจัดกึ่งกลาง Title */}
-                <View style={{ width: 40, alignItems: 'flex-start' }}>
-                    {settingsView !== 'main' && (
-                        <TouchableOpacity onPress={() => setSettingsView('main')} style={styles.headerBackButton} hitSlop={{top: 15, bottom: 15, left: 15, right: 15}}>
-                            <ChevronLeft size={24} color="#1E293B" />
-                        </TouchableOpacity>
-                    )}
-                </View>
-                
-                <View style={{ flex: 1, alignItems: 'center' }}>
-                    <AppText style={styles.modalTitle}>{title}</AppText>
-                </View>
+                    {/* กลุ่มที่ 2: การตั้งค่า */}
+                    <AppText style={styles.menuGroupTitle}>การตั้งค่าแอป</AppText>
+                    <View style={styles.menuGroupContainer}>
+                        <LineMenuItem 
+                            icon={Type} 
+                            color="#8B5CF6" 
+                            label="ขนาดตัวอักษร" 
+                            onPress={() => setSettingsView('font')} 
+                        />
+                        <View style={styles.separator} />
+                        <LineMenuItem 
+                            icon={Globe} 
+                            color="#10B981" 
+                            label="ภาษา (Language)" 
+                            onPress={() => setSettingsView('language')} 
+                        />
+                    </View>
 
-                <View style={{ width: 40, alignItems: 'flex-end' }}>
-                    <TouchableOpacity onPress={() => settingsSheetRef.current?.dismiss()} style={styles.modalCloseIcon} hitSlop={{top: 15, bottom: 15, left: 15, right: 15}}>
-                        <X size={24} color="#94A3B8" />
+                    {/* กลุ่มที่ 3: ช่วยเหลือ */}
+                    <AppText style={styles.menuGroupTitle}>ความช่วยเหลือ</AppText>
+                    <View style={styles.menuGroupContainer}>
+                        <LineMenuItem icon={PhoneCall} color="#EF4444" label="ติดต่อโรงพยาบาล" onPress={() => setSettingsView('contact')} />
+                        <View style={styles.separator} />
+                        <LineMenuItem icon={FileText} color="#64748B" label="ข้อกำหนดการใช้บริการ" onPress={() => setSettingsView('terms')} />
+                        <View style={styles.separator} />
+                        <LineMenuItem icon={Lock} color="#64748B" label="นโยบายความเป็นส่วนตัว" onPress={() => setSettingsView('privacy')} />
+                        <View style={styles.separator} />
+                        <LineMenuItem icon={InfoIcon} color="#64748B" label="เกี่ยวกับแอป" onPress={() => setSettingsView('about')} />
+                    </View>
+
+                    {/* ปุ่ม Logout */}
+                    <TouchableOpacity 
+                        style={styles.lineLogoutButton} 
+                        onPress={() => { settingsSheetRef.current?.dismiss(); onLogout(); }}
+                    >
+                        <AppText style={styles.lineLogoutText}>ออกจากระบบ</AppText>
                     </TouchableOpacity>
                 </View>
-            </View>
-        );
-
-        if (settingsView === 'terms') {
-            return (
+            );
+        }  else if (settingsView === 'terms') {
+            title = 'ข้อกำหนดการใช้บริการ';
+            content = (
                 <>
-                    {renderHeader('ข้อกำหนดการใช้บริการ')}
-                    <BottomSheetScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={styles.termsContent}>
-                        <AppText style={styles.termsHeading}>ข้อกำหนดและเงื่อนไขการใช้บริการ</AppText>
-                        <AppText style={[styles.termsText, { marginBottom: 15, fontStyle: 'italic', textAlign: 'center' }]}>
-                            แอปพลิเคชัน: KSVR ACS Fasttrack{'\n'}ฉบับปรับปรุงล่าสุด: 10 มกราคม 2569
-                        </AppText>
-                        <AppText style={styles.termsHeading}>1. บทนิยาม</AppText>
-                        <AppText style={styles.termsText}>"ผู้ให้บริการ" หมายถึง [ชื่อโรงพยาบาล/หน่วยงาน KSVR]...</AppText>
-                        <View style={{height: 40}} />
-                    </BottomSheetScrollView>
+                    <AppText style={styles.termsHeading}>ข้อกำหนดและเงื่อนไขการใช้บริการ</AppText>
+                    <AppText style={[styles.termsText, { marginBottom: 15, fontStyle: 'italic', textAlign: 'center' }]}>
+                        แอปพลิเคชัน: KSVR ACS Fasttrack{'\n'}ฉบับปรับปรุงล่าสุด: 10 มกราคม 2569
+                    </AppText>
+                    <AppText style={styles.termsHeading}>1. บทนิยาม</AppText>
+                    <AppText style={styles.termsText}>"ผู้ให้บริการ" หมายถึง [ชื่อโรงพยาบาล/หน่วยงาน KSVR]...</AppText>
+                    <View style={{height: 40}} />
                 </>
             );
         } else if (settingsView === 'privacy') {
-            return (
+            title = 'นโยบายความเป็นส่วนตัว';
+            content = (
                 <>
-                    {renderHeader('นโยบายความเป็นส่วนตัว')}
-                    <BottomSheetScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={styles.termsContent}>
-                        <AppText style={styles.termsHeading}>นโยบายความเป็นส่วนตัว (Privacy Policy)</AppText>
-                        <AppText style={[styles.termsText, { marginBottom: 15, fontStyle: 'italic', textAlign: 'center' }]}>
-                            แอปพลิเคชัน: KSVR ACS Fasttrack{'\n'}ฉบับปรับปรุงล่าสุด: 10 มกราคม 2569
-                        </AppText>
-                        <AppText style={styles.termsHeading}>1. บทนำ</AppText>
-                        <AppText style={styles.termsText}>รพ.ค่ายกฤษณ์สีวะรา ("ผู้ให้บริการ") ตระหนักถึงความสำคัญ...</AppText>
-                        <View style={{height: 40}} />
-                    </BottomSheetScrollView>
+                    <AppText style={styles.termsHeading}>นโยบายความเป็นส่วนตัว (Privacy Policy)</AppText>
+                    <AppText style={[styles.termsText, { marginBottom: 15, fontStyle: 'italic', textAlign: 'center' }]}>
+                        แอปพลิเคชัน: KSVR ACS Fasttrack{'\n'}ฉบับปรับปรุงล่าสุด: 10 มกราคม 2569
+                    </AppText>
+                    <AppText style={styles.termsHeading}>1. บทนำ</AppText>
+                    <AppText style={styles.termsText}>รพ.ค่ายกฤษณ์สีวะรา ("ผู้ให้บริการ") ตระหนักถึงความสำคัญ...</AppText>
+                    <View style={{height: 40}} />
                 </>
             );
         } else if (settingsView === 'password') {
-            return (
+            title = 'เปลี่ยนรหัสผ่าน';
+            content = (
                 <>
-                    {renderHeader('เปลี่ยนรหัสผ่าน')}
-                    <BottomSheetScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={styles.termsContent}>
-                        <View style={styles.formGroup}>
-                            <AppText style={styles.inputLabel}>รหัสผ่านปัจจุบัน</AppText>
-                            <View style={styles.passwordContainer}>
-                                <TextInput 
-                                    style={styles.passwordInput} 
-                                    secureTextEntry={!showCurrentPassword}
-                                    placeholder="กรอกรหัสผ่านปัจจุบัน" 
-                                    placeholderTextColor="#94A3B8" 
-                                    value={currentPassword}
-                                    onChangeText={setCurrentPassword}
-                                />
-                                <TouchableOpacity onPress={() => setShowCurrentPassword(!showCurrentPassword)} style={styles.eyeIcon}>
-                                    {showCurrentPassword ? <EyeOff size={20} color="#94A3B8" /> : <Eye size={20} color="#94A3B8" />}
-                                </TouchableOpacity>
-                            </View>
+                    <View style={styles.formGroup}>
+                        <AppText style={styles.inputLabel}>รหัสผ่านปัจจุบัน</AppText>
+                        <View style={styles.passwordContainer}>
+                            <TextInput 
+                                style={styles.passwordInput} 
+                                secureTextEntry={!showCurrentPassword}
+                                placeholder="กรอกรหัสผ่านปัจจุบัน" 
+                                placeholderTextColor="#94A3B8" 
+                                value={currentPassword}
+                                onChangeText={setCurrentPassword}
+                            />
+                            <TouchableOpacity onPress={() => setShowCurrentPassword(!showCurrentPassword)} style={styles.eyeIcon}>
+                                {showCurrentPassword ? <EyeOff size={20} color="#94A3B8" /> : <Eye size={20} color="#94A3B8" />}
+                            </TouchableOpacity>
                         </View>
-                        <View style={styles.formGroup}>
-                            <AppText style={styles.inputLabel}>รหัสผ่านใหม่</AppText>
-                            <View style={styles.passwordContainer}>
-                                <TextInput 
-                                    style={styles.passwordInput} 
-                                    secureTextEntry={!showNewPassword}
-                                    placeholder="กรอกรหัสผ่านใหม่" 
-                                    placeholderTextColor="#94A3B8" 
-                                    value={newPassword}
-                                    onChangeText={setNewPassword}
-                                />
-                                <TouchableOpacity onPress={() => setShowNewPassword(!showNewPassword)} style={styles.eyeIcon}>
-                                    {showNewPassword ? <EyeOff size={20} color="#94A3B8" /> : <Eye size={20} color="#94A3B8" />}
-                                </TouchableOpacity>
-                            </View>
+                    </View>
+                    <View style={styles.formGroup}>
+                        <AppText style={styles.inputLabel}>รหัสผ่านใหม่</AppText>
+                        <View style={styles.passwordContainer}>
+                            <TextInput 
+                                style={styles.passwordInput} 
+                                secureTextEntry={!showNewPassword}
+                                placeholder="กรอกรหัสผ่านใหม่" 
+                                placeholderTextColor="#94A3B8" 
+                                value={newPassword}
+                                onChangeText={setNewPassword}
+                            />
+                            <TouchableOpacity onPress={() => setShowNewPassword(!showNewPassword)} style={styles.eyeIcon}>
+                                {showNewPassword ? <EyeOff size={20} color="#94A3B8" /> : <Eye size={20} color="#94A3B8" />}
+                            </TouchableOpacity>
                         </View>
-                        <View style={styles.formGroup}>
-                            <AppText style={styles.inputLabel}>ยืนยันรหัสผ่านใหม่</AppText>
-                            <View style={styles.passwordContainer}>
-                                <TextInput 
-                                    style={styles.passwordInput} 
-                                    secureTextEntry={!showConfirmPassword}
-                                    placeholder="กรอกรหัสผ่านใหม่ซ้ำอีกครั้ง" 
-                                    placeholderTextColor="#94A3B8" 
-                                    value={confirmPassword}
-                                    onChangeText={setConfirmPassword}
-                                />
-                                <TouchableOpacity onPress={() => setShowConfirmPassword(!showConfirmPassword)} style={styles.eyeIcon}>
-                                    {showConfirmPassword ? <EyeOff size={20} color="#94A3B8" /> : <Eye size={20} color="#94A3B8" />}
-                                </TouchableOpacity>
-                            </View>
+                    </View>
+                    <View style={styles.formGroup}>
+                        <AppText style={styles.inputLabel}>ยืนยันรหัสผ่านใหม่</AppText>
+                        <View style={styles.passwordContainer}>
+                            <TextInput 
+                                style={styles.passwordInput} 
+                                secureTextEntry={!showConfirmPassword}
+                                placeholder="กรอกรหัสผ่านใหม่ซ้ำอีกครั้ง" 
+                                placeholderTextColor="#94A3B8" 
+                                value={confirmPassword}
+                                onChangeText={setConfirmPassword}
+                            />
+                            <TouchableOpacity onPress={() => setShowConfirmPassword(!showConfirmPassword)} style={styles.eyeIcon}>
+                                {showConfirmPassword ? <EyeOff size={20} color="#94A3B8" /> : <Eye size={20} color="#94A3B8" />}
+                            </TouchableOpacity>
                         </View>
-                        <TouchableOpacity 
-                            style={[styles.saveButton, isChangingPassword && { opacity: 0.7 }]} 
-                            onPress={handleChangePassword}
-                            disabled={isChangingPassword}
-                        >
-                             {isChangingPassword ? (
-                                <ActivityIndicator color="white" />
-                            ) : (
-                                <AppText style={styles.saveButtonText}>บันทึกการเปลี่ยนแปลง</AppText>
-                            )}
-                        </TouchableOpacity>
-                    </BottomSheetScrollView>
+                    </View>
+                    <TouchableOpacity 
+                        style={[styles.saveButton, isChangingPassword && { opacity: 0.7 }]} 
+                        onPress={handleChangePassword}
+                        disabled={isChangingPassword}
+                    >
+                         {isChangingPassword ? (
+                            <ActivityIndicator color="white" />
+                        ) : (
+                            <AppText style={styles.saveButtonText}>บันทึกการเปลี่ยนแปลง</AppText>
+                        )}
+                    </TouchableOpacity>
                 </>
             );
         } else if (settingsView === 'font') {
-            return (
-                <>
-                    {renderHeader('ขนาดตัวอักษร')}
-                    <View style={{ flex: 1, padding: 20 }}>
-                        <View style={{ 
-                            padding: 20, 
-                            backgroundColor: '#F8FAFC', 
-                            borderRadius: 16, 
-                            marginBottom: 30, 
-                            alignItems: 'center', 
-                            justifyContent: 'center',
-                            minHeight: 120,
-                            borderWidth: 1,
-                            borderColor: '#E2E8F0'
-                        }}>
-                            <AppText style={{ fontSize: 16 * fontScale }}>ตัวอย่างข้อความ</AppText>
-                            <AppText style={{ fontSize: 14 * fontScale, color: '#64748B', marginTop: 8 }}>นี่คือขนาดตัวอักษรปัจจุบันของคุณ</AppText>
-                        </View>
-
-                        <AppText style={{ fontSize: 16, fontWeight: 'bold', marginBottom: 15, color: '#1E293B' }}>เลือกขนาดตัวอักษร</AppText>
-
-                        <View style={{ gap: 12 }}>
-                            <TouchableOpacity 
-                                style={[
-                                    styles.fontSizeOption, 
-                                    fontScale === FONT_SCALES.SMALL && styles.fontSizeOptionActive
-                                ]}
-                                onPress={() => changeFontScale(FONT_SCALES.SMALL)}
-                            >
-                                <Text style={{ fontSize: 16, color: fontScale === FONT_SCALES.SMALL ? 'white' : '#1E293B' }}>A</Text>
-                                <AppText style={[styles.fontSizeLabel, { color: fontScale === FONT_SCALES.SMALL ? 'white' : '#1E293B' }]}>เล็ก (16)</AppText>
-                                {fontScale === FONT_SCALES.SMALL && <Check size={20} color="white" />}
-                            </TouchableOpacity>
-
-                             <TouchableOpacity 
-                                style={[
-                                    styles.fontSizeOption, 
-                                    fontScale === FONT_SCALES.MEDIUM && styles.fontSizeOptionActive
-                                ]}
-                                onPress={() => changeFontScale(FONT_SCALES.MEDIUM)}
-                            >
-                                <Text style={{ fontSize: 20, fontWeight: 'bold', color: fontScale === FONT_SCALES.MEDIUM ? 'white' : '#1E293B' }}>A</Text>
-                                <AppText style={[styles.fontSizeLabel, { color: fontScale === FONT_SCALES.MEDIUM ? 'white' : '#1E293B' }]}>กลาง (20)</AppText>
-                                {fontScale === FONT_SCALES.MEDIUM && <Check size={20} color="white" />}
-                            </TouchableOpacity>
-
-                             <TouchableOpacity 
-                                style={[
-                                    styles.fontSizeOption, 
-                                    fontScale === FONT_SCALES.LARGE && styles.fontSizeOptionActive
-                                ]}
-                                onPress={() => changeFontScale(FONT_SCALES.LARGE)}
-                            >
-                                <Text style={{ fontSize: 24, fontWeight: '900', color: fontScale === FONT_SCALES.LARGE ? 'white' : '#1E293B' }}>A</Text>
-                                <AppText style={[styles.fontSizeLabel, { color: fontScale === FONT_SCALES.LARGE ? 'white' : '#1E293B' }]}>ใหญ่ (24)</AppText>
-                                {fontScale === FONT_SCALES.LARGE && <Check size={20} color="white" />}
-                            </TouchableOpacity>
-                        </View>
+            title = 'ขนาดตัวอักษร';
+            content = (
+                <View style={{ flex: 1, padding: 20 }}>
+                    <View style={{ 
+                        padding: 20, 
+                        backgroundColor: '#F8FAFC', 
+                        borderRadius: 16, 
+                        marginBottom: 30, 
+                        alignItems: 'center', 
+                        justifyContent: 'center',
+                        minHeight: 120,
+                        borderWidth: 1,
+                        borderColor: '#E2E8F0'
+                    }}>
+                        <AppText style={{ fontSize: 16 * fontScale }}>ตัวอย่างข้อความ</AppText>
+                        <AppText style={{ fontSize: 14 * fontScale, color: '#64748B', marginTop: 8 }}>นี่คือขนาดตัวอักษรปัจจุบันของคุณ</AppText>
                     </View>
-                </>
+
+                    <AppText style={{ fontSize: 16, fontWeight: 'bold', marginBottom: 15, color: '#1E293B' }}>เลือกขนาดตัวอักษร</AppText>
+
+                    <View style={{ gap: 12 }}>
+                        <TouchableOpacity 
+                            style={[styles.fontSizeOption, fontScale === FONT_SCALES.SMALL && styles.fontSizeOptionActive]}
+                            onPress={() => changeFontScale(FONT_SCALES.SMALL)}
+                        >
+                            <Text style={{ fontSize: 16, color: fontScale === FONT_SCALES.SMALL ? 'white' : '#1E293B' }}>A</Text>
+                            <AppText style={[styles.fontSizeLabel, { color: fontScale === FONT_SCALES.SMALL ? 'white' : '#1E293B' }]}>เล็ก (16)</AppText>
+                            {fontScale === FONT_SCALES.SMALL && <Check size={20} color="white" />}
+                        </TouchableOpacity>
+
+                         <TouchableOpacity 
+                            style={[styles.fontSizeOption, fontScale === FONT_SCALES.MEDIUM && styles.fontSizeOptionActive]}
+                            onPress={() => changeFontScale(FONT_SCALES.MEDIUM)}
+                        >
+                            <Text style={{ fontSize: 20, fontWeight: 'bold', color: fontScale === FONT_SCALES.MEDIUM ? 'white' : '#1E293B' }}>A</Text>
+                            <AppText style={[styles.fontSizeLabel, { color: fontScale === FONT_SCALES.MEDIUM ? 'white' : '#1E293B' }]}>กลาง (20)</AppText>
+                            {fontScale === FONT_SCALES.MEDIUM && <Check size={20} color="white" />}
+                        </TouchableOpacity>
+
+                         <TouchableOpacity 
+                            style={[styles.fontSizeOption, fontScale === FONT_SCALES.LARGE && styles.fontSizeOptionActive]}
+                            onPress={() => changeFontScale(FONT_SCALES.LARGE)}
+                        >
+                            <Text style={{ fontSize: 24, fontWeight: '900', color: fontScale === FONT_SCALES.LARGE ? 'white' : '#1E293B' }}>A</Text>
+                            <AppText style={[styles.fontSizeLabel, { color: fontScale === FONT_SCALES.LARGE ? 'white' : '#1E293B' }]}>ใหญ่ (24)</AppText>
+                            {fontScale === FONT_SCALES.LARGE && <Check size={20} color="white" />}
+                        </TouchableOpacity>
+                    </View>
+                </View>
             );
         } else if (settingsView === 'language') {
-            return (
-                <>
-                    {renderHeader('ภาษา')}
-                    <View style={styles.placeholderContainer}>
-                        <InfoIcon size={48} color="#CBD5E1" />
-                        <AppText style={styles.placeholderText}>ฟีเจอร์นี้อยู่ระหว่างการพัฒนา</AppText>
-                    </View>
-                </>
+            title = 'ภาษา';
+            content = (
+                <View style={styles.placeholderContainer}>
+                    <InfoIcon size={48} color="#CBD5E1" />
+                    <AppText style={styles.placeholderText}>ฟีเจอร์นี้อยู่ระหว่างการพัฒนา</AppText>
+                </View>
             );
         } else if (settingsView === 'contact') {
-            return (
-                <>
-                    {renderHeader('ติดต่อโรงพยาบาล')}
-                    <BottomSheetScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={styles.termsContent}>
-                         <View style={styles.contactCard}>
-                             <PhoneCall size={32} color="#EF4444" style={{marginBottom: 10}} />
-                             <AppText style={styles.contactTitle}>รพ.ค่ายกฤษณ์สีวะรา</AppText>
-                             <AppText style={styles.contactSubtitle}>แผนกฉุกเฉิน 24 ชั่วโมง</AppText>
-                             <TouchableOpacity style={styles.callButton} onPress={() => Linking.openURL('tel:1669')}>
-                                <AppText style={styles.callButtonText}>โทร 1669</AppText>
-                             </TouchableOpacity>
-                             <TouchableOpacity style={[styles.callButton, {backgroundColor: 'white', borderWidth:1, borderColor:'#E2E8F0', marginTop: 10}]} onPress={() => Linking.openURL('tel:042712867')}>
-                                <AppText style={[styles.callButtonText, {color:'#1E293B'}]}>โทร 042-712867</AppText>
-                             </TouchableOpacity>
-                         </View>
-                    </BottomSheetScrollView>
-                </>
+            title = 'ติดต่อโรงพยาบาล';
+            content = (
+                <View style={styles.contactCard}>
+                     <PhoneCall size={32} color="#EF4444" style={{marginBottom: 10}} />
+                     <AppText style={styles.contactTitle}>รพ.ค่ายกฤษณ์สีวะรา</AppText>
+                     <AppText style={styles.contactSubtitle}>แผนกฉุกเฉิน 24 ชั่วโมง</AppText>
+                     <TouchableOpacity style={styles.callButton} onPress={() => Linking.openURL('tel:1669')}>
+                        <AppText style={styles.callButtonText}>โทร 1669</AppText>
+                     </TouchableOpacity>
+                     <TouchableOpacity style={[styles.callButton, {backgroundColor: 'white', borderWidth:1, borderColor:'#E2E8F0', marginTop: 10}]} onPress={() => Linking.openURL('tel:042712867')}>
+                        <AppText style={[styles.callButtonText, {color:'#1E293B'}]}>โทร 042-712867</AppText>
+                     </TouchableOpacity>
+                 </View>
             );
         } else if (settingsView === 'about') {
-            return (
-                <>
-                    {renderHeader('เกี่ยวกับแอป')}
-                    <View style={styles.aboutContainer}>
-                         <View style={styles.logoCircle}><Heart size={24} color="white" fill="white" /></View>
-                         <AppText style={styles.aboutAppName}>KSVR ACS Fasttrack</AppText>
-                         <AppText style={styles.aboutVersion}>Version 1.0.0</AppText>
-                         <AppText style={styles.aboutDesc}>แอปพลิเคชันสำหรับแจ้งเหตุฉุกเฉินผู้ป่วยโรคหัวใจและหลอดเลือด โรงพยาบาลค่ายกฤษณ์สีวะรา จังหวัดสกลนคร</AppText>
-                    </View>
-                </>
+            title = 'เกี่ยวกับแอป';
+            content = (
+                <View style={styles.aboutContainer}>
+                     <View style={styles.logoCircle}><Heart size={24} color="white" fill="white" /></View>
+                     <AppText style={styles.aboutAppName}>KSVR ACS Fasttrack</AppText>
+                     <AppText style={styles.aboutVersion}>Version 1.0.0</AppText>
+                     <AppText style={styles.aboutDesc}>แอปพลิเคชันสำหรับแจ้งเหตุฉุกเฉินผู้ป่วยโรคหัวใจและหลอดเลือด โรงพยาบาลค่ายกฤษณ์สีวะรา จังหวัดสกลนคร</AppText>
+                </View>
             );
         }
 
-        // --- Default: Main Settings Menu ---
+        // 2. Return โครงสร้างหลัก (Unified Structure)
         return (
-            <>
+            <View style={{ flex: 1 }}>
+                {/* Header ส่วนกลาง */}
                 <View style={styles.modalHeaderRow}>
-                    <View style={{ width: 40 }} />
-                    <View style={{ flex: 1, alignItems: 'center' }}>
-                         <AppText style={styles.modalTitle}>ตั้งค่า</AppText>
+                    <View style={{ width: 40, alignItems: 'flex-start' }}>
+                        {!isMain && (
+                            <TouchableOpacity onPress={() => setSettingsView('main')} style={styles.headerBackButton} hitSlop={{top: 15, bottom: 15, left: 15, right: 15}}>
+                                <ChevronLeft size={24} color="#1E293B" />
+                            </TouchableOpacity>
+                        )}
                     </View>
+                    
+                    <View style={{ flex: 1, alignItems: 'center' }}>
+                        <AppText style={styles.modalTitle}>{title}</AppText>
+                    </View>
+
                     <View style={{ width: 40, alignItems: 'flex-end' }}>
                         <TouchableOpacity onPress={() => settingsSheetRef.current?.dismiss()} style={styles.modalCloseIcon} hitSlop={{top: 15, bottom: 15, left: 15, right: 15}}>
                             <X size={24} color="#94A3B8" />
@@ -929,94 +981,17 @@ const HomeScreen = () => {
                     </View>
                 </View>
 
-                {/* [FIXED] ใช้ BottomSheetScrollView เพื่อให้เมนูเลื่อนได้ใน Bottom Sheet */}
+                {/* เนื้อหาที่เปลี่ยนไปตาม State */}
                 <BottomSheetScrollView 
                     style={{ flex: 1, width: '100%' }} 
                     showsVerticalScrollIndicator={false}
-                    contentContainerStyle={{ paddingBottom: 100 }} // [FIX] เพิ่ม paddingBottom เป็น 100 เพื่อให้เห็นปุ่มออกจากระบบ
+                    contentContainerStyle={{ paddingBottom: 50, paddingHorizontal: 20 }}
                 >
-                    <View style={styles.menuSection}>
-                        <AppText style={styles.menuGroupTitle}>บัญชีผู้ใช้</AppText>
-                        <TouchableOpacity style={styles.menuItem} onPress={() => {
-                            authenticateUser(() => {
-                                settingsSheetRef.current?.dismiss();
-                                setTimeout(() => {
-                                    profileSheetRef.current?.present();
-                                }, 300);
-                            });
-                        }}>
-                            <View style={[styles.menuIconBox, { backgroundColor: '#FEF2F2' }]}>
-                                <UserCircle size={20} color="#EF4444" />
-                            </View>
-                            <AppText style={styles.menuItemText}>ข้อมูลส่วนตัว (Medical ID)</AppText>
-                            <ChevronRight size={16} color="#CBD5E1" />
-                        </TouchableOpacity>
-
-                        <TouchableOpacity style={styles.menuItem} onPress={() => setSettingsView('password')}>
-                             <View style={[styles.menuIconBox, { backgroundColor: '#F0F9FF' }]}>
-                                <Key size={20} color="#0EA5E9" />
-                            </View>
-                            <AppText style={styles.menuItemText}>เปลี่ยนรหัสผ่าน</AppText>
-                            <ChevronRight size={16} color="#CBD5E1" />
-                        </TouchableOpacity>
-                    </View>
-
-                    <View style={styles.menuSection}>
-                        <AppText style={styles.menuGroupTitle}>การใช้งาน</AppText>
-                        <TouchableOpacity style={styles.menuItem} onPress={() => setSettingsView('font')}>
-                            <View style={[styles.menuIconBox, { backgroundColor: '#FDF4FF' }]}>
-                                <Type size={20} color="#C026D3" />
-                            </View>
-                            <AppText style={styles.menuItemText}>ขนาดตัวอักษร</AppText>
-                            <ChevronRight size={16} color="#CBD5E1" />
-                        </TouchableOpacity>
-                    </View>
-
-                    <View style={styles.menuSection}>
-                        <AppText style={styles.menuGroupTitle}>ช่วยเหลือ</AppText>
-                        <TouchableOpacity style={styles.menuItem} onPress={() => setSettingsView('contact')}>
-                             <View style={[styles.menuIconBox, { backgroundColor: '#ECFDF5' }]}>
-                                <PhoneCall size={20} color="#10B981" />
-                            </View>
-                            <AppText style={styles.menuItemText}>ติดต่อโรงพยาบาล</AppText>
-                            <ChevronRight size={16} color="#CBD5E1" />
-                        </TouchableOpacity>
-                        
-                         <TouchableOpacity style={styles.menuItem} onPress={() => setSettingsView('terms')}>
-                             <View style={[styles.menuIconBox, { backgroundColor: '#F1F5F9' }]}>
-                                <FileText size={20} color="#64748B" />
-                            </View>
-                            <AppText style={styles.menuItemText}>ข้อกำหนดการใช้บริการ</AppText>
-                            <ChevronRight size={16} color="#CBD5E1" />
-                        </TouchableOpacity>
-
-                        <TouchableOpacity style={styles.menuItem} onPress={() => setSettingsView('privacy')}>
-                             <View style={[styles.menuIconBox, { backgroundColor: '#F1F5F9' }]}>
-                                <Lock size={20} color="#64748B" />
-                            </View>
-                            <AppText style={styles.menuItemText}>นโยบายความเป็นส่วนตัว</AppText>
-                            <ChevronRight size={16} color="#CBD5E1" />
-                        </TouchableOpacity>
-                        
-                         <TouchableOpacity style={styles.menuItem} onPress={() => setSettingsView('about')}>
-                             <View style={[styles.menuIconBox, { backgroundColor: '#F1F5F9' }]}>
-                                <InfoIcon size={20} color="#64748B" />
-                            </View>
-                            <AppText style={styles.menuItemText}>เกี่ยวกับแอป</AppText>
-                            <ChevronRight size={16} color="#CBD5E1" />
-                        </TouchableOpacity>
-                    </View>
-
-                    <View style={styles.menuSection}>
-                        <TouchableOpacity style={styles.logoutButton} onPress={() => { settingsSheetRef.current?.dismiss(); onLogout(); }}>
-                            <LogOut size={20} color="#EF4444" />
-                            <AppText style={styles.logoutText}>ออกจากระบบ</AppText>
-                        </TouchableOpacity>
-                    </View>
+                    {content}
                 </BottomSheetScrollView>
-            </>
+            </View>
         );
-    };
+    }, [settingsView, fontScale]);
 
     if (loading) {
         return (
@@ -1033,7 +1008,6 @@ const HomeScreen = () => {
  
     return (
         <GestureHandlerRootView style={{ flex: 1 }}>
-            <BottomSheetModalProvider>
                 <SafeAreaView style={styles.container}>
                     <StatusBar barStyle="dark-content" />
                     
@@ -1063,7 +1037,7 @@ const HomeScreen = () => {
                                 <TouchableOpacity 
                                     style={styles.profileHeaderSection}
                                     // [NEW] เรียกใช้ฟังก์ชันสแกนนิ้วก่อนเข้าดูโปรไฟล์
-                                    onPress={() => authenticateUser(() => profileSheetRef.current?.present())}
+                                    onPress={() => authenticateUser(() => navigation.navigate('Profile'))}
                                     activeOpacity={0.8}
                                 >
                                      <View style={styles.profileRow}>
@@ -1201,137 +1175,13 @@ const HomeScreen = () => {
                         snapPoints={snapPoints}
                         backdropComponent={renderBackdrop}
                         enablePanDownToClose={true}
-                        handleIndicatorStyle={{ backgroundColor: 'transparent' }} // [NEW] ซ่อน Handle
+                        handleIndicatorStyle={{ backgroundColor: '#E2E8F0', width: 40 }}
+                        backgroundStyle={{ borderRadius: 24, backgroundColor: 'white' }} 
+                        onDismiss={() => setSettingsView('main')}
                     >
                         <BottomSheetView style={{ flex: 1 }}>
                             {renderSettingsContent()}
                         </BottomSheetView>
-                    </BottomSheetModal>
-
-                    {/* --- Profile Modal (Standalone CustomBottomSheet) --- */}
-                    <BottomSheetModal
-                        ref={profileSheetRef}
-                        index={0}
-                        snapPoints={snapPoints}
-                        backdropComponent={renderBackdrop}
-                        enablePanDownToClose={true}
-                        handleIndicatorStyle={{ backgroundColor: 'transparent' }} // [NEW] ซ่อน Handle
-                    >
-                         <BottomSheetScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
-                                <View style={{ padding: 20 }}>
-                                    <View style={styles.headerBar}>
-                                        <Text style={{fontSize: 20, fontWeight: '900', color: '#1E293B', marginBottom: 10}}>ข้อมูลส่วนตัว</Text>
-                                        <TouchableOpacity onPress={() => profileSheetRef.current?.dismiss()} style={{ position: 'absolute', right: 0, top: 0, padding: 10 }}>
-                                            <X size={24} color="#EF4444" />
-                                        </TouchableOpacity>
-                                    </View>
-                                    <View style={styles.medicalCard}>
-                                        <View style={styles.medicalHeaderCenter}>
-                                            <View style={styles.medicalAvatarLarge}>
-                                                {/* [FIX] Check for user profile picture and load if available, else show icon */}
-                                                {user?.picture_profile && !imageLoadError ? (
-                                                    <Image 
-                                                        source={{ uri: `https://ksvrhospital.go.th/krit-siwara_smart_heart/files/avatars/${user.picture_profile}` }}
-                                                        style={{ width: '100%', height: '100%', borderRadius: 30 }}
-                                                        resizeMode="cover"
-                                                        onError={() => setImageLoadError(true)}
-                                                    />
-                                                ) : (
-                                                    <User size={40} color="white" />
-                                                )}
-                                            </View>
-                                            <View style={{alignItems: 'center', marginTop: 10}}>
-                                                <AppText style={styles.medicalNameCenter}>{user?.name || 'ไม่ระบุชื่อ'}</AppText>
-                                                <AppText style={styles.medicalHNCenter}>HN: {user?.hn || user?.username || '-'}</AppText>
-                                            </View>
-                                        </View>
-                                        <View style={styles.medicalGrid}>
-                                            <View style={styles.medicalItem}><AppText style={styles.medicalLabel}>กรุ๊ปเลือด</AppText><AppText style={styles.medicalValueRed}>{user?.detail_medical?.blood_type || '-'}</AppText></View>
-                                            <View style={styles.medicalLine} />
-                                            <View style={styles.medicalItem}><AppText style={styles.medicalLabel}>อายุ</AppText><AppText style={styles.medicalValue}>{user?.detail_genaral?.age ? `${user.detail_genaral.age} ปี` : '-'}</AppText></View>
-                                            <View style={styles.medicalLine} />
-                                            <View style={styles.medicalItem}><AppText style={styles.medicalLabel}>โรคประจำตัว</AppText><AppText style={styles.medicalValue} numberOfLines={1}>{getCongenitalDiseases()}</AppText></View>
-                                        </View>
-                                        <View style={styles.allergyBox}>
-                                            <View style={{flexDirection: 'row', alignItems: 'center', marginBottom: 5}}><AlertTriangle size={16} color="#F59E0B" /><AppText style={styles.allergyTitle}> ประวัติการแพ้ยา</AppText></View>
-                                            <AppText style={styles.allergyText}>{user?.detail_medical?.drug_allergy_history || 'ไม่มีประวัติการแพ้ยา'}</AppText>
-                                        </View>
-
-                                        {/* [NEW] General Info Section with Email */}
-                                        <View style={styles.infoSection}>
-                                            <AppText style={styles.infoSectionTitle}>ข้อมูลทั่วไป</AppText>
-                                            
-                                            <View style={styles.infoRowSimple}>
-                                                <AppText style={styles.infoLabelSimple}>เลขบัตรประชาชน</AppText>
-                                                <AppText style={styles.infoValueSimple}>{user?.detail_genaral?.cid || '-'}</AppText>
-                                            </View>
-                                            
-                                            <View style={styles.infoRowSimple}>
-                                                <AppText style={styles.infoLabelSimple}>วันเกิด</AppText>
-                                                <AppText style={styles.infoValueSimple}>{user?.detail_genaral?.birthday || '-'}</AppText>
-                                            </View>
-
-                                            {/* Added Email Field */}
-                                            <View style={styles.infoRowSimple}>
-                                                <AppText style={styles.infoLabelSimple}>อีเมล</AppText>
-                                                <AppText style={styles.infoValueSimple} numberOfLines={1}>{user?.detail_genaral?.email || '-'}</AppText>
-                                            </View>
-
-                                            <View style={styles.infoRowSimple}>
-                                                <AppText style={styles.infoLabelSimple}>เบอร์โทรศัพท์</AppText>
-                                                <AppText style={styles.infoValueSimple}>{user?.detail_genaral?.phonenumber || '-'}</AppText>
-                                            </View>
-                                            
-                                            <View style={styles.infoRowSimple}>
-                                                <AppText style={styles.infoLabelSimple}>ที่อยู่</AppText>
-                                                <AppText style={styles.infoValueSimple}>{user?.addr?.address1 || '-'}</AppText>
-                                            </View>
-
-                                            <View style={styles.infoRowSimple}>
-                                                <AppText style={styles.infoLabelSimple}>หน่วย/สังกัด</AppText>
-                                                <AppText style={styles.infoValueSimple}>
-                                                    {user?.detail_genaral?.unit || '-'} {user?.detail_genaral?.sub ? `(${user.detail_genaral.sub})` : ''}
-                                                </AppText>
-                                            </View>
-                                        </View>
-
-                                        {/* [NEW] Medical Rights & Habits Section */}
-                                        <View style={styles.infoSection}>
-                                            <AppText style={styles.infoSectionTitle}>ข้อมูลสิทธิและการรักษา</AppText>
-
-                                            <View style={styles.infoRowSimple}>
-                                                <AppText style={styles.infoLabelSimple}>สิทธิการรักษา</AppText>
-                                                <AppText style={styles.infoValueSimple}>{user?.detail_medical?.claim_patient || '-'}</AppText>
-                                            </View>
-                                            
-                                            <View style={styles.infoRowSimple}>
-                                                <AppText style={styles.infoLabelSimple}>แพทย์เจ้าของไข้</AppText>
-                                                <AppText style={styles.infoValueSimple}>{user?.detail_medical?.doctor || '-'}</AppText>
-                                            </View>
-
-                                            <View style={styles.infoRowSimple}>
-                                                <AppText style={styles.infoLabelSimple}>สถานะสูบบุหรี่</AppText>
-                                                <AppText style={styles.infoValueSimple}>{user?.detail_medical?.cigarette || '-'}</AppText>
-                                            </View>
-                                        </View>
-
-                                        {/* Emergency Contact */}
-                                        <View style={styles.infoSection}>
-                                            <AppText style={styles.infoSectionTitle}>ผู้ติดต่อฉุกเฉิน</AppText>
-                                            <View style={styles.contactRow}>
-                                                <View style={styles.contactIcon}><Phone size={16} color="white" /></View>
-                                                <View>
-                                                    {/* [FIX] Map family_patient */}
-                                                    <AppText style={styles.contactName}>{user?.family_patient?.relation_name || 'ไม่ได้ระบุ'}</AppText>
-                                                    <AppText style={styles.contactRelation}>
-                                                        {user?.family_patient?.relationship ? `(${user.family_patient.relationship})` : ''} {user?.family_patient?.relation_tel || ''}
-                                                    </AppText>
-                                                </View>
-                                            </View>
-                                        </View>
-                                    </View>
-                                </View>
-                            </BottomSheetScrollView>
                     </BottomSheetModal>
                     
                     {/* Map Modal */}
@@ -1350,7 +1200,6 @@ const HomeScreen = () => {
                         </View>
                     </Modal>
                 </SafeAreaView>
-            </BottomSheetModalProvider>
         </GestureHandlerRootView>
     );
 };
@@ -1729,6 +1578,71 @@ const styles = StyleSheet.create({
     distanceText: { fontSize: 14, fontWeight: 'bold', color: '#334155' },
     externalMapLink: { paddingHorizontal: 15, paddingVertical: 10, backgroundColor: '#F8FAFC', borderRadius: 12, borderWidth: 1, borderColor: '#E2E8F0' },
     externalMapText: { color: '#3B82F6', fontWeight: 'bold', fontSize: 12 },
+
+    menuGroupTitle: {
+        fontSize: 13,
+        fontWeight: '600',
+        color: '#64748B',
+        marginTop: 20,
+        marginBottom: 8,
+        marginLeft: 4,
+    },
+    menuGroupContainer: {
+        backgroundColor: '#FFFFFF',
+        borderRadius: 16,
+        paddingVertical: 4,
+        paddingHorizontal: 4,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.05,
+        shadowRadius: 10,
+        elevation: 2,
+        borderWidth: 1,
+        borderColor: '#F1F5F9',
+    },
+    lineMenuItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingVertical: 12,
+        paddingHorizontal: 12,
+    },
+    lineMenuIconBox: {
+        width: 38,
+        height: 38,
+        borderRadius: 12,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginRight: 14,
+    },
+    lineMenuTextBox: {
+        flex: 1,
+    },
+    lineMenuText: {
+        fontSize: 16,
+        fontWeight: '500',
+        color: '#1E293B',
+    },
+    separator: {
+        height: 1,
+        backgroundColor: '#F1F5F9',
+        marginLeft: 64, // เว้นให้พ้นไอคอน
+        marginRight: 10,
+    },
+    lineLogoutButton: {
+        marginTop: 30,
+        marginBottom: 20,
+        backgroundColor: '#FEF2F2',
+        paddingVertical: 15,
+        borderRadius: 16,
+        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: '#FECACA',
+    },
+    lineLogoutText: {
+        fontSize: 16,
+        fontWeight: 'bold',
+        color: '#EF4444',
+    },
 });
 
 

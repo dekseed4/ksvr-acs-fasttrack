@@ -7,6 +7,7 @@ import { Home, Map, BookOpen, Heart } from 'lucide-react-native';
 
 import LoginScreen from './app/screens/LoginScreen';
 import HomeScreen from './app/screens/HomeScreen';
+import ProfileScreen from './app/screens/ProfileScreen';
 import HospitalMapScreen from './app/screens/HospitalMapScreen';
 import KnowledgeScreen from './app/screens/KnowledgeScreen';
 import TermsConsentScreen from './app/screens/TermsConsentScreen';
@@ -14,6 +15,7 @@ import { ThemeProvider } from './app/context/ThemeContext';
 import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
 import { AppText } from './app/components/AppText';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -67,11 +69,13 @@ function AppTabs() {
 export default function App() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-        <AuthProvider>
-            <ThemeProvider>
-                <Layout></Layout>
-            </ThemeProvider>
-        </AuthProvider>
+        <BottomSheetModalProvider>
+            <AuthProvider>
+                <ThemeProvider>
+                    <Layout></Layout>
+                </ThemeProvider>
+            </AuthProvider>
+        </BottomSheetModalProvider>
     </GestureHandlerRootView>
   );
 }
@@ -99,21 +103,24 @@ export const Layout = () => {
         <NavigationContainer>
             <Stack.Navigator screenOptions={{ headerShown: false }}>
                 {authState?.authenticated ? (
-                    // 🟢 กรณี: เข้าสู่ระบบแล้ว (Authenticated)
                     showConsentScreen ? (
-                        // ⚠️ ถ้ายังไม่ยอมรับเงื่อนไข -> บังคับไปหน้า Consent
                         <Stack.Screen name="TermsConsentScreen" component={TermsConsentScreen} />
                     ) : (
-                        // ✅ ถ้ายอมรับแล้ว -> เข้าใช้งาน AppTabs ได้ตามปกติ
-                        <Stack.Screen name="AppTabs" component={AppTabs} />
+                        <>
+                            <Stack.Screen name="AppTabs" component={AppTabs} />
+                            <Stack.Screen 
+                                name="Profile" 
+                                component={ProfileScreen} 
+                                options={{ headerShown: false }} 
+                            />
+                        </>
                     )
                 ) : (
-                    // 🔴 กรณี: ยังไม่เข้าสู่ระบบ
                     <Stack.Screen name="Login" component={LoginScreen} />
                 )}
             </Stack.Navigator>
         </NavigationContainer>
-        );
+    );
 };
 
 const styles = StyleSheet.create({
