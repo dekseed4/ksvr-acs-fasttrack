@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useState } from "react";
 import axios from "axios";
 import * as SecureStore from "expo-secure-store";
 import { Alert, Platform } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export interface UserProfile {
     name: string;
@@ -196,6 +197,7 @@ useEffect(() => {
             // 2. เคลียร์ข้อมูลในเครื่องแน่นอน แม้ API จะ Error
             await SecureStore.deleteItemAsync(TOKEN_KEY);
             delete axios.defaults.headers.common["Authorization"];
+            AsyncStorage.removeItem('use_biometric');
             setAuthState({
                 token: null,
                 authenticated: false,

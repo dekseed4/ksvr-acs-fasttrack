@@ -12,7 +12,8 @@ import {
   Dimensions,
   ActivityIndicator,
   Alert,
-  Linking
+  Linking,
+  Image,
 } from 'react-native';
 
 import { 
@@ -95,13 +96,17 @@ const LoginScreen = () => {
           {/* Header Section: Hospital Brand */}
           <View style={styles.header}>
             <View style={styles.logoContainer}>
-              <View style={styles.logoBg}>
+              {/* <View style={styles.logoBg}>
                 <Activity size={70} color="rgba(255,255,255,0.15)" style={styles.bgIcon} />
                 <Stethoscope size={50} color="#ffffff" strokeWidth={2.5} />
               </View>
               <View style={styles.pulseBadge}>
                 <Activity size={14} color="#ffffff" strokeWidth={3} />
-              </View>
+              </View> */}
+                <Image 
+                    source={require('../../assets/logo.png')}
+                    style={{ width: 150, height: 150, resizeMode: 'contain' }} 
+                />
             </View>
             
             <Text style={styles.hospitalName}>โรงพยาบาลค่ายกฤษณ์สีวะรา</Text>
@@ -229,7 +234,7 @@ const styles = StyleSheet.create({
   },
   logoContainer: {
     position: 'relative',
-    marginBottom: 20,
+    // marginBottom: 20,
   },
   logoBg: {
     width: 95,

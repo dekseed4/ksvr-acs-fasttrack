@@ -37,7 +37,6 @@ import {
 import { 
     SlideInRight, SlideOutRight, 
     SlideInLeft, SlideOutLeft, 
-    LinearTransition, FadeIn, FadeOut 
 } from 'react-native-reanimated';
 
 import MapView, { Marker, PROVIDER_GOOGLE, Circle as MapCircle } from 'react-native-maps';
