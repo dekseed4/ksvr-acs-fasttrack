@@ -1361,7 +1361,10 @@ const HomeScreen = () => {
                 <View style={styles.headerBar}>
                     {/* (คงเดิมไว้) */}
                     <View style={styles.logoContainer}>
-                        <View style={styles.logoCircle}><Heart size={16} color="white" fill="white" /></View>
+                        <Image 
+                            source={require('../../assets/logo.png')}
+                            style={{ width: 40, height: 40, resizeMode: 'contain' }} 
+                        />
                         <AppText style={styles.appNameText}>KSVR <AppText style={styles.appNameLight}>ACS FAST TRACK</AppText></AppText>
                     </View>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
@@ -1498,7 +1501,13 @@ const HomeScreen = () => {
                                                 style={[styles.sosButton, isPressing && styles.sosButtonActive, isSubmitting && styles.sosButtonDisabled]}
                                             >
                                                 {isSubmitting ? <ActivityIndicator size="large" color="white" /> : (
-                                                    <><Heart size={56} color="white" fill="white" /><Text style={styles.sosText}>ฉุกเฉิน</Text></>
+                                                    <>
+                                                    {/* <Image 
+                                                        source={require('../../assets/logo.png')} 
+                                                        style={{ width: 90, height: 90, resizeMode: 'contain' }} 
+                                                    /> */}
+                                                    <Heart size={56} color="white" fill="white" />
+                                                    <Text style={styles.sosText}>ฉุกเฉิน</Text></>
                                                 )}
                                             </TouchableOpacity>
                                         </Animated.View>

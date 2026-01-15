@@ -5,6 +5,11 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
+    "splash": {
+      "image": "./assets/splash-icon.png", 
+      "resizeMode": "contain", 
+      "backgroundColor": "#FFFFFF" 
+    },
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "jsEngine": "hermes",
@@ -19,6 +24,9 @@
           "remote-notification"
         ]
       },
+      "splash": {
+        "tabletImage": "./assets/splash-icon.png"
+      },
       "bundleIdentifier": "com.ksvr.acsfasttrack",
       "buildNumber": "1",
       "supportsTablet": true,
@@ -29,6 +37,10 @@
     "android": {
       "package": "com.ksvr.acsfasttrack",
       "versionCode": 1,
+      "splash": {
+        "resizeMode": "contain",
+        "backgroundColor": "#FFFFFF" 
+      },
       "permissions": [
         "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION",
