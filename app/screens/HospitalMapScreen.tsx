@@ -1,15 +1,45 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, Dimensions, TouchableOpacity, Alert, Platform, Linking, ActivityIndicator, Image } from 'react-native';
+import { View, Text, StyleSheet, Dimensions, TouchableOpacity, Alert, Platform, Linking, } from 'react-native';
 import MapView, { Marker, PROVIDER_GOOGLE, Region } from 'react-native-maps'; // ใช้ตัวมาตรฐาน
 import * as Location from 'expo-location';
 import { Navigation, Phone, MapPin } from 'lucide-react-native';
 
 // ข้อมูลจำลอง (Mock Data) - หรือจะดึงจาก API ก็ได้
 const HOSPITALS = [
-    { id: 1, name: "รพ.ค่ายกฤษณ์สีวะรา", address: "อ.เมือง จ.สกลนคร", latitude: 17.1352, longitude: 104.1465, phone: "042-123456" },
-    { id: 2, name: "รพ.ศูนย์สกลนคร", address: "ใจกลางเมืองสกลนคร", latitude: 17.1662, longitude: 104.1480, phone: "042-711711" },
-    { id: 3, name: "รพ.รักษ์สกล", address: "ถ.รัฐพัฒนา", latitude: 17.1580, longitude: 104.1350, phone: "042-712888" },
+    { 
+        id: 1, 
+        name: "รพ.ค่ายกฤษณ์สีวะรา", 
+        address: "ถ.นิตโย", 
+        latitude: 17.1872777,
+        longitude: 104.1058157, 
+        phone: "042-123456" 
+    },
+    { 
+        id: 2, 
+        name: "รพ.ศูนย์สกลนคร", 
+        address: "1041 ถ. เรืองสวัสดิ์", 
+        latitude: 17.1634287,
+        longitude: 104.1583068, 
+        phone: "042-711711" 
+    },
+    { 
+        id: 3, 
+        name: "รพ.รักษ์สกล", 
+        address: "ถ.รอบเมือง", 
+        latitude: 17.162272, 
+        longitude: 104.144814,  
+        phone: "042-712800" 
+    },
+    { 
+        id: 4, 
+        name: "รพ.พริ้นซ์ สกลนคร", 
+        address: "ถ.ประชาอุทิศ", 
+        latitude: 17.173515, 
+        longitude: 104.126533, 
+        phone: "042-092888" 
+    },
 ];
+
 
 // ฟังก์ชันคำนวณระยะทาง (km)
 const getDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {

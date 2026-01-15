@@ -21,6 +21,7 @@ import {
   AppState,
   LayoutAnimation, 
   UIManager, 
+  DeviceEventEmitter,
 } from 'react-native';
 
 import { useNavigation } from '@react-navigation/native'; 
@@ -118,11 +119,6 @@ const LineMenuItem = ({ icon: Icon, color, label, onPress, isDestructive = false
 
 const HomeScreen = () => {
 
-    if (Platform.OS === 'android') {
-        if (UIManager.setLayoutAnimationEnabledExperimental) {
-            UIManager.setLayoutAnimationEnabledExperimental(true);
-        }
-    }
     const { setUserData, onLogout, authState } = useAuth(); // ดึง Token และฟังก์ชัน Logout
     const user = authState?.user; // ข้อมูลโปรไฟล์ผู้ใช้
 
@@ -134,10 +130,9 @@ const HomeScreen = () => {
     const [isConnected, setIsConnected] = useState(true);
 
     // --- Notification Management ---
-    const [hasUnread, setHasUnread] = useState(true);
-    const [showPopover, setShowPopover] = useState(false);
+    const [hasUnread, setHasUnread] = useState(false);
     const [notificationList, setNotificationList] = useState([]);
-    const [refreshNotif, setRefreshNotif] = useState(false);
+    const notificationListRef = useRef([]);
 
     // ใช้งาน Theme Context
     const { fontScale, changeFontScale } = useTheme();
@@ -209,6 +204,45 @@ const HomeScreen = () => {
         LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
         setSettingsView(newView);
     };
+
+   
+    
+    // ฟังก์ชันลงทะเบียนรับ Push Notifications
+    async function registerForPushNotificationsAsync() {
+        let token;
+
+        if (Platform.OS === 'android') {
+            await Notifications.setNotificationChannelAsync('default', {
+            name: 'default',
+            importance: Notifications.AndroidImportance.MAX,
+            vibrationPattern: [0, 250, 250, 250],
+            lightColor: '#FF231F7C',
+            });
+        }
+
+        const { status: existingStatus } = await Notifications.getPermissionsAsync();
+        let finalStatus = existingStatus;
+        
+        // ถ้ายังไม่มีสิทธิ์ ให้ขอสิทธิ์
+        if (existingStatus !== 'granted') {
+            const { status } = await Notifications.requestPermissionsAsync();
+            finalStatus = status;
+        }
+        
+        if (finalStatus !== 'granted') {
+            alert('Failed to get push token for push notification!');
+            return;
+        }
+
+        // ดึง Token (ต้องใช้ Project ID จาก app.json / eas.json ถ้าใช้ EAS Build)
+        // แต่ถ้า Test บน Expo Go ปกติไม่ต้องใส่ projectId ก็ได้
+        token = (await Notifications.getExpoPushTokenAsync({
+            projectId: 'YOUR_PROJECT_ID_HERE' // ใส่ Project ID ของคุณถ้ามี
+        })).data;
+
+        console.log("Expo Push Token:", token); // <-- เอา Token นี้ไปเทสยิงดูก่อนได้
+        return token;
+    }
 
    // --- [NEW] Backdrop for Bottom Sheet ---
     const renderBackdrop = useCallback(
@@ -789,49 +823,118 @@ const HomeScreen = () => {
 
     // Notification Listeners & Handlers
     useEffect(() => {
-        // 1. ฟังก์ชันจัดการเมื่อได้รับ Notification (ใช้ร่วมกันทั้งตอนเปิดแอปและกดเข้ามา)
+        notificationListRef.current = notificationList;
+    }, [notificationList]);
+
+    useEffect(() => {
+        // 1. ฟังก์ชันจัดการเมื่อได้รับ Notification
         const handleNewNotification = (notification) => {
             const content = notification.request.content;
-            
-            // สร้าง Object แจ้งเตือน
+            const identifier = notification.request.identifier; // ✅ ใช้ ID จริงจากระบบ (แก้ตรงนี้)
+
+            // เช็คก่อนว่ามี ID นี้ใน list หรือยัง? ถ้ามีแล้ว "ไม่เพิ่มซ้ำ"
+            const isDuplicate = notificationListRef.current.some(n => n.id === identifier);
+            if (isDuplicate) return; 
+
+            const now = new Date();
+            const timeString = now.toLocaleDateString('th-TH', {
+                year: '2-digit', month: 'short', day: 'numeric',
+                hour: '2-digit', minute: '2-digit', hour12: false
+            }) + ' น.';
+
             const newNotif = {
-                id: Date.now(),
+                id: identifier, // ✅ ใช้ ID จริงแทน Date.now()
                 type: content.data?.type || 'info',
                 title: content.title || 'การแจ้งเตือนใหม่',
                 body: content.body || '',
-                time: 'ตอนนี้',
+                time: timeString,
                 read: false
             };
             
-            // อัปเดต State
             setNotificationList(prev => [newNotif, ...prev]);
             setHasUnread(true);
         };
 
-        // 2. Listener ตอนแอปเปิดอยู่ (Foreground) -> รับแล้วโชว์จุดแดง แต่ไม่เด้ง Popover
+        // 2. Listener ตอนแอปเปิดอยู่ (Foreground)
         const receivedSub = Notifications.addNotificationReceivedListener(notification => {
             handleNewNotification(notification);
         });
 
-        // 3. Listener ตอน User "กด" ที่แจ้งเตือน (Tap) -> รับแล้วเด้ง Popover ทันที
+        // 3. Listener ตอนกด Notification (Response)
         const responseSub = Notifications.addNotificationResponseReceivedListener(response => {
             const content = response.notification.request.content;
-            
-            // เพิ่มลง List
-            handleNewNotification(response.notification);
-            
-            // เปิด Popover ทันทีเพื่อให้ User เห็นรายละเอียด
-            setShowPopover(true);
-            console.log("👆 User Tapped Notification:", content.data);
+            const identifier = response.notification.request.identifier; // ✅ ใช้ ID จริง
 
-            // ถ้ามี Logic การเปลี่ยนหน้า (Navigation) ให้ใส่ตรงนี้
-            // if (content.data?.type === 'manual_announcement') { ... }
+            const currentList = notificationListRef.current;
+            
+            // หาว่ามีรายการนี้อยู่แล้วไหม
+            const existingIndex = currentList.findIndex(n => n.id === identifier);
+            
+            let newList;
+
+            if (existingIndex !== -1) {
+                // A. ถ้ามีอยู่แล้ว -> แค่อัปเดตสถานะเป็น "อ่านแล้ว" (ไม่เพิ่มใหม่)
+                newList = [...currentList];
+                newList[existingIndex] = { ...newList[existingIndex], read: true };
+            } else {
+                // B. ถ้ายังไม่มี (เช่น มาจากตอนปิดแอป) -> สร้างใหม่โดยใช้ ID จริง
+                const now = new Date();
+                const timeString = now.toLocaleDateString('th-TH', {
+                    year: '2-digit', month: 'short', day: 'numeric',
+                    hour: '2-digit', minute: '2-digit', hour12: false
+                }) + ' น.';
+
+                const tappedNotif = {
+                    id: identifier, // ✅ ใช้ ID จริง
+                    type: content.data?.type || 'info',
+                    title: content.title || 'การแจ้งเตือนใหม่',
+                    body: content.body || '',
+                    time: timeString,
+                    read: true 
+                };
+                newList = [tappedNotif, ...currentList];
+            }
+
+            // อัปเดต State และส่งไปหน้าถัดไป
+            setNotificationList(newList);
+            setHasUnread(false);
+            
+            navigation.navigate('Notifications', { 
+                notifications: newList,
+                initialId: identifier // ส่ง ID ของตัวที่ถูกกดไป
+            });
         });
 
-        // Cleanup function
         return () => {
             receivedSub.remove();
             responseSub.remove();
+        };
+    }, []);
+
+    useEffect(() => {
+        const subscription = DeviceEventEmitter.addListener('notificationRead', (readId) => {
+            console.log("Receive Read Signal ID:", readId);
+
+            setNotificationList(prevList => {
+                // 1. สร้างลิสต์ใหม่ที่อัปเดตสถานะอ่านแล้ว
+                const newList = prevList.map(n => n.id === readId ? { ...n, read: true } : n);
+                
+                // อัปเดต Ref ให้ตรงกัน
+                notificationListRef.current = newList; 
+                
+                // 2. เช็คจาก newList (ข้อมูลล่าสุด)
+                // เช็คว่ามีตัวไหนที่ยังไม่อ่านเหลืออยู่ไหม
+                const stillHasUnread = newList.some(n => !n.read);
+                
+                // อัปเดตจุดแดง: จะขึ้นแดงก็ต่อเมื่อ (มีข้อมูล และ มีตัวที่ยังไม่อ่าน)
+                setHasUnread(newList.length > 0 && stillHasUnread);
+                
+                return newList;
+            });
+        });
+
+        return () => {
+            subscription.remove();
         };
     }, []);
 
@@ -974,185 +1077,265 @@ const HomeScreen = () => {
                     </>
         );
        
-    // ---------------------------------------------------------
-// SettingsNavigation (ฉบับ Fixed Header - ตรึงหัว 100%)
-// ---------------------------------------------------------
-const SettingsNavigation = ({ 
-    currentView, 
-    onChangeView, 
-    onClose, 
-    user, 
-    authenticateUser, 
-    navigation, 
-    onLogout, 
-    fontScale = 1,
-    changeFontScale,
-    renderPasswordForm
-}) => {
-    
-    // Animation Config
-    const isMain = currentView === 'main';
-    const mainEntering = SlideInLeft.duration(350);
-    const mainExiting = SlideOutLeft.duration(350);
-    const subEntering = SlideInRight.duration(350);
-    const subExiting = SlideOutRight.duration(350);
+    // SettingsNavigation
+    const SettingsNavigation = ({ 
+        currentView, 
+        onChangeView, 
+        onClose, 
+        user, 
+        authenticateUser, 
+        navigation, 
+        onLogout, 
+        fontScale = 1,
+        changeFontScale,
+        renderPasswordForm
+    }) => {
+        
+            // Animation Config
+            const isMain = currentView === 'main';
+            const mainEntering = SlideInLeft.duration(350);
+            const mainExiting = SlideOutLeft.duration(350);
+            const subEntering = SlideInRight.duration(350);
+            const subExiting = SlideOutRight.duration(350);
 
-    // กำหนดความสูง Header เพื่อใช้คำนวณ Padding
-    const HEADER_HEIGHT = 80;
+            // กำหนดความสูง Header เพื่อใช้คำนวณ Padding
+            const HEADER_HEIGHT = 80;
 
-    // --- Header Component (ใช้ Absolute Position) ---
-    const Header = ({ title, showBack }) => (
-        <View style={{
-            position: 'absolute', // ✅ ตรึงตำแหน่ง
-            top: 0,
-            left: 0,
-            right: 0,
-            height: HEADER_HEIGHT,
-            zIndex: 999,          // ✅ ลอยอยู่ชั้นบนสุด
-            backgroundColor: 'white', 
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            paddingHorizontal: 20,
-            paddingVertical: 15,
-            borderBottomWidth: 1,
-            borderBottomColor: '#F1F5F9',
-        }}>
-            <View style={{ width: 40, alignItems: 'flex-start' }}>
-                {showBack && (
-                    <TouchableOpacity onPress={() => onChangeView('main')} style={styles.headerBackButton} hitSlop={{top:15, bottom:15, left:15, right:15}}>
-                        <ChevronLeft size={24 * fontScale} color="#1E293B" />
-                    </TouchableOpacity>
-                )}
-            </View>
-            <View style={{ flex: 1, alignItems: 'center' }}>
-                <AppText style={[styles.modalTitle, { fontSize: 20 * fontScale }]}>{title}</AppText>
-            </View>
-            <View style={{ width: 40, alignItems: 'flex-end' }}>
-                <TouchableOpacity onPress={onClose} style={styles.modalCloseIcon} hitSlop={{top:15, bottom:15, left:15, right:15}}>
-                    <X size={24 * fontScale} color="#94A3B8" />
-                </TouchableOpacity>
-            </View>
-        </View>
-    );
-
-    // 1. หน้าหลัก (Main Menu)
-    if (currentView === 'main') {
-        return (
-            <Animated.View key="main" entering={mainEntering} exiting={mainExiting} style={{ flex: 1, position: 'relative' }}>
-                {/* ScrollView อยู่ด้านหลัง */}
-                <BottomSheetScrollView 
-                    contentContainerStyle={{ 
-                        paddingHorizontal: 20, 
-                        paddingTop: HEADER_HEIGHT + 10, 
-                        paddingBottom: 30, // เผื่อพื้นที่ให้ปุ่ม Logout ด้านล่าง
-                        flexGrow: 1
-                    }}
-                >
-                    <AppText style={[styles.menuGroupTitle, { fontSize: 12 * fontScale }]}>บัญชีของฉัน</AppText>
-                    <View style={styles.menuGroupContainer}>
-                        <LineMenuItem fontScale={fontScale} icon={UserCircle} color="#3B82F6" label="ข้อมูลส่วนตัว (Medical ID)" onPress={() => authenticateUser(() => { onClose(); navigation.navigate('Profile'); })} />
-                        <View style={styles.separator} />
-                        <LineMenuItem fontScale={fontScale} icon={Key} color="#F59E0B" label="เปลี่ยนรหัสผ่าน" onPress={() => onChangeView('password')} />
-                    </View>
-
-                    <AppText style={[styles.menuGroupTitle, { fontSize: 12 * fontScale }]}>การตั้งค่าแอป</AppText>
-                    <View style={styles.menuGroupContainer}>
-                        <LineMenuItem fontScale={fontScale} icon={Type} color="#8B5CF6" label="ขนาดตัวอักษร" onPress={() => onChangeView('font')} />
-                        <View style={styles.separator} />
-                        <LineMenuItem fontScale={fontScale} icon={Globe} color="#10B981" label="ภาษา (Language)" onPress={() => onChangeView('language')} />
-                    </View>
-
-                    <AppText style={[styles.menuGroupTitle, { fontSize: 12 * fontScale }]}>ความช่วยเหลือ</AppText>
-                    <View style={styles.menuGroupContainer}>
-                        <LineMenuItem fontScale={fontScale} icon={PhoneCall} color="#EF4444" label="ติดต่อโรงพยาบาล" onPress={() => onChangeView('contact')} />
-                        <View style={styles.separator} />
-                        <LineMenuItem fontScale={fontScale} icon={FileText} color="#64748B" label="ข้อกำหนดการใช้บริการ" onPress={() => onChangeView('terms')} />
-                        <View style={styles.separator} />
-                        <LineMenuItem fontScale={fontScale} icon={InfoIcon} color="#64748B" label="เกี่ยวกับแอป" onPress={() => onChangeView('about')} />
-                    </View>
-
-                    <TouchableOpacity style={[styles.lineLogoutButton, { marginBottom: 40 }]} onPress={() => { onClose(); onLogout(); }}>
-                        <AppText style={[styles.lineLogoutText, { fontSize: 15 * fontScale }]}>ออกจากระบบ</AppText>
-                    </TouchableOpacity>
-                </BottomSheetScrollView>
-
-                {/* Header วางทับอยู่ด้านหน้า */}
-                <Header title="ตั้งค่า" showBack={false} />
-            </Animated.View>
-        );
-    }
-
-    // 2. หน้าเปลี่ยนรหัสผ่าน
-    if (currentView === 'password') {
-        return (
-            <Animated.View key="password" entering={subEntering} exiting={subExiting} style={{ flex: 1, position: 'relative' }}>
-                <BottomSheetScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 150, paddingTop: HEADER_HEIGHT + 20 }}>
-                    {renderPasswordForm()}
-                </BottomSheetScrollView>
-                <Header title="เปลี่ยนรหัสผ่าน" showBack={true} />
-            </Animated.View>
-        );
-    }
-
-    // 3. หน้าขนาดตัวอักษร
-    if (currentView === 'font') {
-        return (
-            <Animated.View key="font" entering={subEntering} exiting={subExiting} style={{ flex: 1, position: 'relative' }}>
-                <BottomSheetScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 150, paddingTop: HEADER_HEIGHT + 20, flexGrow: 1 }}>
-                    <View style={{ padding: 20, backgroundColor: '#F8FAFC', borderRadius: 16, marginBottom: 30, alignItems: 'center', minHeight: 120, justifyContent: 'center', borderWidth: 1, borderColor: '#E2E8F0' }}>
-                        <AppText style={{ fontSize: 16 * fontScale }}>ตัวอย่างข้อความ</AppText>
-                        <AppText style={{ fontSize: 14 * fontScale, color: '#64748B', marginTop: 8 }}>ขนาดปัจจุบัน</AppText>
-                    </View>
-                    <View style={{ gap: 12 }}>
-                        {[
-                            { l: 'เล็ก (16)', s: 1, i: 'A', fs: 16 },
-                            { l: 'กลาง (20)', s: 1.25, i: 'A', fs: 20, b: true },
-                            { l: 'ใหญ่ (24)', s: 1.5, i: 'A', fs: 24, b: true, w: '900' }
-                        ].map((opt, idx) => (
-                            <TouchableOpacity 
-                                key={idx}
-                                style={[styles.fontSizeOption, fontScale === opt.s && styles.fontSizeOptionActive]}
-                                onPress={() => changeFontScale(opt.s)}
-                            >
-                                <Text style={{ fontSize: opt.fs, fontWeight: opt.w || 'normal', color: fontScale === opt.s ? 'white' : '#1E293B' }}>{opt.i}</Text>
-                                <AppText style={[styles.fontSizeLabel, { color: fontScale === opt.s ? 'white' : '#1E293B', fontSize: 16 * fontScale }]}>{opt.l}</AppText>
-                                {fontScale === opt.s && <Check size={20} color="white" />}
+            // --- Header Component (ใช้ Absolute Position) ---
+            const Header = ({ title, showBack }) => (
+                <View style={{
+                    position: 'absolute', // ✅ ตรึงตำแหน่ง
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    height: HEADER_HEIGHT,
+                    zIndex: 999,          // ✅ ลอยอยู่ชั้นบนสุด
+                    backgroundColor: 'white', 
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    paddingHorizontal: 20,
+                    paddingVertical: 15,
+                    borderBottomWidth: 1,
+                    borderBottomColor: '#F1F5F9',
+                }}>
+                    <View style={{ width: 40, alignItems: 'flex-start' }}>
+                        {showBack && (
+                            <TouchableOpacity onPress={() => onChangeView('main')} style={styles.headerBackButton} hitSlop={{top:15, bottom:15, left:15, right:15}}>
+                                <ChevronLeft size={24 * fontScale} color="#1E293B" />
                             </TouchableOpacity>
-                        ))}
+                        )}
                     </View>
-                </BottomSheetScrollView>
-                <Header title="ขนาดตัวอักษร" showBack={true} />
-            </Animated.View>
-        );
-    }
-
-    // 4. หน้าติดต่อเรา
-    if (currentView === 'contact') {
-        return (
-            <Animated.View key="contact" entering={subEntering} exiting={subExiting} style={{ flex: 1, position: 'relative' }}>
-                <BottomSheetScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 150, paddingTop: HEADER_HEIGHT + 20 }}>
-                    <View style={styles.contactCard}>
-                        <PhoneCall size={32 * fontScale} color="#EF4444" style={{marginBottom: 10}} />
-                        <AppText style={[styles.contactTitle, { fontSize: 18 * fontScale }]}>รพ.ค่ายกฤษณ์สีวะรา</AppText>
-                        <AppText style={[styles.contactSubtitle, { fontSize: 14 * fontScale }]}>แผนกฉุกเฉิน 24 ชั่วโมง</AppText>
-                        <TouchableOpacity style={styles.callButton} onPress={() => Linking.openURL('tel:1669')}>
-                            <AppText style={[styles.callButtonText, { fontSize: 15 * fontScale }]}>โทร 1669</AppText>
-                        </TouchableOpacity>
-                        <TouchableOpacity style={[styles.callButton, {backgroundColor: 'white', borderWidth:1, borderColor:'#E2E8F0', marginTop: 10}]} onPress={() => Linking.openURL('tel:042712867')}>
-                            <AppText style={[styles.callButtonText, {color:'#1E293B', fontSize: 15 * fontScale}]}>โทร 042-712867</AppText>
+                    <View style={{ flex: 1, alignItems: 'center' }}>
+                        <AppText style={[styles.modalTitle, { fontSize: 20 * fontScale }]}>{title}</AppText>
+                    </View>
+                    <View style={{ width: 40, alignItems: 'flex-end' }}>
+                        <TouchableOpacity onPress={onClose} style={styles.modalCloseIcon} hitSlop={{top:15, bottom:15, left:15, right:15}}>
+                            <X size={24 * fontScale} color="#94A3B8" />
                         </TouchableOpacity>
                     </View>
-                </BottomSheetScrollView>
-                <Header title="ติดต่อโรงพยาบาล" showBack={true} />
-            </Animated.View>
-        );
-    }
+                </View>
+            );
 
-    // อย่าลืมทำ case อื่นๆ (terms, about) ด้วยวิธีเดียวกัน (วาง Header ไว้ท้ายสุด + เพิ่ม paddingTop ใน ScrollView)
+            // 1. หน้าหลัก (Main Menu)
+            if (currentView === 'main') {
+                return (
+                    <Animated.View key="main" entering={mainEntering} exiting={mainExiting} style={{ flex: 1, position: 'relative' }}>
+                        {/* ScrollView อยู่ด้านหลัง */}
+                        <BottomSheetScrollView 
+                            contentContainerStyle={{ 
+                                paddingHorizontal: 20, 
+                                paddingTop: HEADER_HEIGHT + 10, 
+                                paddingBottom: 30, // เผื่อพื้นที่ให้ปุ่ม Logout ด้านล่าง
+                                flexGrow: 1
+                            }}
+                        >
+                            <AppText style={[styles.menuGroupTitle, { fontSize: 12 * fontScale }]}>บัญชีของฉัน</AppText>
+                            <View style={styles.menuGroupContainer}>
+                                <LineMenuItem fontScale={fontScale} icon={UserCircle} color="#3B82F6" label="ข้อมูลส่วนตัว" onPress={() => authenticateUser(() => { onClose(); navigation.navigate('Profile'); })} />
+                                <View style={styles.separator} />
+                                <LineMenuItem fontScale={fontScale} icon={Key} color="#F59E0B" label="เปลี่ยนรหัสผ่าน" onPress={() => onChangeView('password')} />
+                            </View>
 
-    return null;
-};
+                            <AppText style={[styles.menuGroupTitle, { fontSize: 12 * fontScale }]}>การตั้งค่าแอป</AppText>
+                            <View style={styles.menuGroupContainer}>
+                                <LineMenuItem fontScale={fontScale} icon={Type} color="#8B5CF6" label="ขนาดตัวอักษร" onPress={() => onChangeView('font')} />
+                                <View style={styles.separator} />
+                            </View>
+
+                            <AppText style={[styles.menuGroupTitle, { fontSize: 12 * fontScale }]}>ความช่วยเหลือ</AppText>
+                            <View style={styles.menuGroupContainer}>
+                                <LineMenuItem fontScale={fontScale} icon={PhoneCall} color="#EF4444" label="ติดต่อโรงพยาบาล" onPress={() => onChangeView('contact')} />
+                                <View style={styles.separator} />
+                                <LineMenuItem fontScale={fontScale} icon={FileText} color="#64748B" label="นโยบายความเป็นส่วนตัว" onPress={() => onChangeView('privacy')} />
+                                <View style={styles.separator} />
+                                <LineMenuItem fontScale={fontScale} icon={InfoIcon} color="#64748B" label="เกี่ยวกับแอป" onPress={() => onChangeView('about')} />
+                            </View>
+
+                            <TouchableOpacity style={[styles.lineLogoutButton, { marginBottom: 40 }]} onPress={() => { onClose(); onLogout(); }}>
+                                <AppText style={[styles.lineLogoutText, { fontSize: 15 * fontScale }]}>ออกจากระบบ</AppText>
+                            </TouchableOpacity>
+                        </BottomSheetScrollView>
+
+                        {/* Header วางทับอยู่ด้านหน้า */}
+                        <Header title="ตั้งค่า" showBack={false} />
+                    </Animated.View>
+                );
+            }
+
+            // 2. หน้าเปลี่ยนรหัสผ่าน
+            if (currentView === 'password') {
+                return (
+                    <Animated.View key="password" entering={subEntering} exiting={subExiting} style={{ flex: 1, position: 'relative' }}>
+                        <BottomSheetScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 150, paddingTop: HEADER_HEIGHT + 20 }}>
+                            {renderPasswordForm()}
+                        </BottomSheetScrollView>
+                        <Header title="เปลี่ยนรหัสผ่าน" showBack={true} />
+                    </Animated.View>
+                );
+            }
+
+            // 3. หน้าขนาดตัวอักษร
+            if (currentView === 'font') {
+                return (
+                    <Animated.View key="font" entering={subEntering} exiting={subExiting} style={{ flex: 1, position: 'relative' }}>
+                        <BottomSheetScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 150, paddingTop: HEADER_HEIGHT + 20, flexGrow: 1 }}>
+                            <View style={{ padding: 20, backgroundColor: '#F8FAFC', borderRadius: 16, marginBottom: 30, alignItems: 'center', minHeight: 120, justifyContent: 'center', borderWidth: 1, borderColor: '#E2E8F0' }}>
+                                <AppText style={{ fontSize: 16 * fontScale }}>ตัวอย่างข้อความ</AppText>
+                                <AppText style={{ fontSize: 14 * fontScale, color: '#64748B', marginTop: 8 }}>ขนาดปัจจุบัน</AppText>
+                            </View>
+                            <View style={{ gap: 12 }}>
+                                {[
+                                    { l: 'เล็ก (16)', s: 1, i: 'A', fs: 16 },
+                                    { l: 'กลาง (20)', s: 1.25, i: 'A', fs: 20, b: true },
+                                    { l: 'ใหญ่ (24)', s: 1.5, i: 'A', fs: 24, b: true, w: '900' }
+                                ].map((opt, idx) => (
+                                    <TouchableOpacity 
+                                        key={idx}
+                                        style={[styles.fontSizeOption, fontScale === opt.s && styles.fontSizeOptionActive]}
+                                        onPress={() => changeFontScale(opt.s)}
+                                    >
+                                        <AppText style={{ fontSize: opt.fs, fontWeight: opt.w || 'normal', color: fontScale === opt.s ? 'white' : '#1E293B' }}>{opt.i}</AppText>
+                                        <AppText style={[styles.fontSizeLabel, { color: fontScale === opt.s ? 'white' : '#1E293B', fontSize: 16 * fontScale }]}>{opt.l}</AppText>
+                                        {fontScale === opt.s && <Check size={20} color="white" />}
+                                    </TouchableOpacity>
+                                ))}
+                            </View>
+                        </BottomSheetScrollView>
+                        <Header title="ขนาดตัวอักษร" showBack={true} />
+                    </Animated.View>
+                );
+            }
+
+            // 4. หน้าติดต่อเรา
+            if (currentView === 'contact') {
+                return (
+                    <Animated.View key="contact" entering={subEntering} exiting={subExiting} style={{ flex: 1, position: 'relative' }}>
+                        <BottomSheetScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 150, paddingTop: HEADER_HEIGHT + 20 }}>
+                            <View style={styles.contactCard}>
+                                <PhoneCall size={32 * fontScale} color="#EF4444" style={{marginBottom: 10}} />
+                                <AppText style={[styles.contactTitle, { fontSize: 18 * fontScale }]}>รพ.ค่ายกฤษณ์สีวะรา</AppText>
+                                <AppText style={[styles.contactSubtitle, { fontSize: 14 * fontScale }]}>แผนกฉุกเฉิน 24 ชั่วโมง</AppText>
+                                <TouchableOpacity style={styles.callButton} onPress={() => Linking.openURL('tel:0647906014')}>
+                                    <AppText style={[styles.callButtonText, { fontSize: 15 * fontScale }]}>โทร 064-7906014</AppText>
+                                </TouchableOpacity>
+                                
+                            </View>
+                        </BottomSheetScrollView>
+                        <Header title="ติดต่อโรงพยาบาล" showBack={true} />
+                    </Animated.View>
+                );
+            }
+
+            // ค้นหาส่วนนี้ใน HomeScreen.tsx แล้วแทนที่ด้วยโค้ดด้านล่างนี้ครับ
+            if (currentView === 'privacy') {
+                return (
+                    <Animated.View 
+                        key="privacy" 
+                        entering={subEntering} 
+                        exiting={subExiting} 
+                        style={{ flex: 1 }} // ลบ position: 'relative' ออกเพื่อให้จัดการง่ายขึ้น
+                    >
+                        {/* ✅ 1. ย้าย Header มาไว้บรรทัดแรก เพื่อไม่ให้ทับซ้อนเลเยอร์การสัมผัส */}
+                        <Header title="นโยบายความเป็นส่วนตัว" showBack={true} />
+
+                        {/* ✅ 2. ใช้ BottomSheetScrollView โดยกำหนดสไตล์ให้ชัดเจน */}
+                    <BottomSheetScrollView 
+                            // ✅ สำหรับ Android: ระบุ flex: 1 ให้ชัดเจนที่สไตล์หลัก
+                            style={{ flex: 1 }} 
+                            contentContainerStyle={{ 
+                                paddingHorizontal: 20, 
+                                // ✅ ใช้ค่าคงที่ HEADER_HEIGHT + พื้นที่เว้นว่าง
+                                paddingTop: HEADER_HEIGHT + 20, 
+                                paddingBottom: 30, 
+                                flexGrow: 1 
+                            }}
+                            // ✅ สำหรับ Android: ป้องกันไม่ให้ BottomSheet แย่งคำสั่งเลื่อนนิ้วแนวตั้ง
+                            nestedScrollEnabled={true} 
+                            // ✅ สำหรับ Android: ปรับค่าการสัมผัสให้ไวขึ้น
+                            activeOffsetY={[-5, 5]} 
+                        >
+                            {/* ส่วนหัวเนื้อหา */}
+                            <View style={{ alignItems: 'center', marginBottom: 20 }}>
+                                <ShieldCheck size={48 * fontScale} color="#10B981" />
+                                <AppText style={[styles.contactTitle, { fontSize: 20 * fontScale, marginTop: 10 }]}>
+                                    นโยบายความเป็นส่วนตัว
+                                </AppText>
+                                <AppText style={[styles.contactSubtitle, { fontSize: 13 * fontScale }]}>
+                                    ปรับปรุงล่าสุด: 15 มกราคม 2569
+                                </AppText>
+                            </View>
+
+                            {/* ส่วนกล่องเนื้อหา (ตรวจสอบ styles.privacyContentBox ว่าไม่มีการใส่ height ตายตัว) */}
+                            <View style={styles.privacyContentBox}>
+                                <AppText style={[styles.privacySectionTitle, { fontSize: 16 * fontScale }]}>1. การเก็บรวบรวมข้อมูล</AppText>
+                                <AppText style={[styles.privacyBody, { fontSize: 14 * fontScale }]}>
+                                    แอปพลิเคชันจะจัดเก็บข้อมูลที่จำเป็นต่อการช่วยชีวิต ได้แก่ ชื่อ-นามสกุล, หมายเลขโทรศัพท์, ข้อมูลสิทธิการรักษา (HN) และข้อมูลสุขภาพเบื้องต้นที่เกี่ยวข้องกับโรคหลอดเลือดหัวใจ
+                                </AppText>
+
+                                <AppText style={[styles.privacySectionTitle, { fontSize: 16 * fontScale, marginTop: 15 }]}>2. ข้อมูลตำแหน่ง (Location Data)</AppText>
+                                <AppText style={[styles.privacyBody, { fontSize: 14 * fontScale }]}>
+                                    ในกรณีฉุกเฉิน แอปพลิเคชันจะเข้าถึงข้อมูลพิกัดดาวเทียม (GPS) ของคุณเพื่อส่งให้ทีมแพทย์ทราบตำแหน่งที่ชัดเจนสำหรับการเข้าช่วยเหลืออย่างเร่งด่วน แม้ในขณะที่แอปพลิเคชันทำงานอยู่เบื้องหลัง
+                                </AppText>
+
+                                <AppText style={[styles.privacySectionTitle, { fontSize: 16 * fontScale, marginTop: 15 }]}>3. การรักษาความปลอดภัย</AppText>
+                                <AppText style={[styles.privacyBody, { fontSize: 14 * fontScale }]}>
+                                    ข้อมูลของคุณจะถูกจัดเก็บตามมาตรฐานความปลอดภัยทางคอมพิวเตอร์ และจำกัดการเข้าถึงเฉพาะเจ้าหน้าที่ทางการแพทย์ที่เกี่ยวข้องของ รพ.ค่ายกฤษณ์สีวะรา เท่านั้น
+                                </AppText>
+
+                                <AppText style={[styles.privacySectionTitle, { fontSize: 16 * fontScale, marginTop: 15 }]}>4. การเปิดเผยข้อมูล</AppText>
+                                <AppText style={[styles.privacyBody, { fontSize: 14 * fontScale }]}>
+                                    เราจะไม่มีการนำข้อมูลส่วนบุคคลของคุณไปจำหน่ายหรือเผยแพร่แก่บุคคลภายนอก เว้นแต่จะเป็นการส่งต่อข้อมูลเพื่อส่งต่อการรักษา (Refer) ระหว่างสถานพยาบาลตามระเบียบของกระทรวงสาธารณสุข
+                                </AppText>
+                                
+                                {/* เพิ่มข้อความเพื่อทดสอบความยาว */}
+                                <AppText style={[styles.privacySectionTitle, { fontSize: 16 * fontScale, marginTop: 15 }]}>5. การติดต่อ</AppText>
+                                <AppText style={[styles.privacyBody, { fontSize: 14 * fontScale }]}>
+                                    หากท่านมีข้อสงสัยเกี่ยวกับนโยบายความเป็นส่วนตัวนี้ ท่านสามารถติดต่อเจ้าหน้าที่คุ้มครองข้อมูลส่วนบุคคลของโรงพยาบาลได้ตามช่องทางที่ระบุในหน้าติดต่อ
+                                </AppText>
+                            </View>
+                        </BottomSheetScrollView>
+                    </Animated.View>
+                );
+            }
+
+            if (currentView === 'about') {
+                return (
+                    <Animated.View key="about" entering={subEntering} exiting={subExiting} style={{ flex: 1, position: 'relative' }}>
+                        <BottomSheetScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 150, paddingTop: HEADER_HEIGHT + 20 }}>
+                            <View style={styles.aboutContainer}>
+                                <View style={styles.logoCircle}><Heart size={24} color="white" fill="white" /></View>
+                                <AppText style={styles.aboutAppName}>KSVR ACS Fasttrack</AppText>
+                                <AppText style={styles.aboutVersion}>Version 1.0.0</AppText>
+                                <AppText style={styles.aboutDesc}>แอปพลิเคชันสำหรับแจ้งเหตุฉุกเฉินผู้ป่วยโรคหัวใจและหลอดเลือด โรงพยาบาลค่ายกฤษณ์สีวะรา จังหวัดสกลนคร</AppText>
+                            </View>
+                        </BottomSheetScrollView>
+                        <Header title="เกี่ยวกับแอปพลิเคชัน" showBack={true} />
+                    </Animated.View>
+                );
+            }
+
+    };
 
     if (loading) {
         return (
@@ -1171,7 +1354,7 @@ const SettingsNavigation = ({
 
     return (
         <GestureHandlerRootView style={{ flex: 1 }}>
-            <SafeAreaView style={styles.container}>
+            <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
                 <StatusBar barStyle="dark-content" />
                 
                 {/* ... (Header ส่วนเดิม) ... */}
@@ -1182,7 +1365,12 @@ const SettingsNavigation = ({
                         <AppText style={styles.appNameText}>KSVR <AppText style={styles.appNameLight}>ACS FAST TRACK</AppText></AppText>
                     </View>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                        <TouchableOpacity style={styles.settingsIconButton} onPress={() => { setHasUnread(false); setShowPopover(true); }}>
+                         <TouchableOpacity
+                            style={styles.settingsIconButton}
+                            onPress={() => {navigation.navigate('Notifications', {notifications: notificationList});
+                                setHasUnread(false);
+                            }}
+                        >
                             <Bell size={20} color="#94A3B8" />
                             {hasUnread && <View style={styles.notificationBadge} />}
                         </TouchableOpacity>
@@ -1197,7 +1385,7 @@ const SettingsNavigation = ({
                     contentContainerStyle={{ flexGrow: 1 }}
                     refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#EF4444']} />}
                 >
-                    <View style={{ flex: 1, paddingBottom: 40 }}>
+                    <View style={{ flex: 1, paddingBottom: 10 }}>
                         
                         {/* --- Redesigned Main Card --- */}
                         <View style={styles.unifiedCard}>
@@ -1236,14 +1424,8 @@ const SettingsNavigation = ({
                                             <ChevronRight size={20} color="#94A3B8" />
                                         </View>
                                 </View>
-
-                                {/* Row 2: Medical Info (Moved Here) */}
-                               
                             </TouchableOpacity>
-
                             <View style={styles.sectionDivider} />
-
-                            {/* Location Section (Cleaned up) */}
                             <TouchableOpacity 
                                 onPress={openInMaps} 
                                 activeOpacity={0.9} 
@@ -1359,40 +1541,36 @@ const SettingsNavigation = ({
                         </View>
                     </View>
                 </ScrollView>
-
                 {/* ... (Modals ส่วนที่เหลือคงเดิม) ... */}
                 <BottomSheetModal
-                ref={settingsSheetRef}
-                index={0}
-                snapPoints={snapPoints}
-                
-                // ✅ 1. ใส่บรรทัดนี้ เพื่อ "ล็อกความสูง" ไม่ให้หดตามเนื้อหา
-                enableDynamicSizing={false} 
-                
-                backdropComponent={renderBackdrop}
-                enablePanDownToClose={true}
-                handleIndicatorStyle={{ backgroundColor: '#E2E8F0', width: 40 }}
-                backgroundStyle={{ borderRadius: 24, backgroundColor: 'white' }} 
-                onDismiss={() => setSettingsView('main')}
-            >
-                {/* ✅ 2. ใส่ height: '100%' เพื่อให้เนื้อหาข้างในยืดเต็มพื้นที่ 90% นั้นเสมอ */}
-                <View style={{ flex: 1, height: '100%' }}> 
-                    <SettingsNavigation 
-                        currentView={settingsView}
-                        onChangeView={setSettingsView}
-                        onClose={() => settingsSheetRef.current?.dismiss()}
-                        user={user}
-                        authenticateUser={authenticateUser}
-                        navigation={navigation}
-                        onLogout={onLogout}
-                        fontScale={fontScale}
-                        changeFontScale={changeFontScale}
-                        renderPasswordForm={renderPasswordSettings}
-                    />
-                </View>
-            </BottomSheetModal>
-                {/* ... MapModal, PopoverModal คงเดิม ... */}
-                 <Modal animationType="slide" transparent={false} visible={showInAppMap} onRequestClose={() => setShowInAppMap(false)}>
+                    ref={settingsSheetRef}
+                    enableContentPanningGesture={false}
+                    index={0}
+                    snapPoints={snapPoints}
+                    enableDynamicSizing={false} 
+                    backdropComponent={renderBackdrop}
+                    enablePanDownToClose={true}
+                    handleIndicatorStyle={{ backgroundColor: '#E2E8F0', width: 40 }}
+                    backgroundStyle={{ borderRadius: 24, backgroundColor: 'white' }} 
+                    onDismiss={() => setSettingsView('main')}
+                >
+                    {/* ✅ 2. ใส่ height: '100%' เพื่อให้เนื้อหาข้างในยืดเต็มพื้นที่ 90% นั้นเสมอ */}
+                    <View style={{ flex: 1, height: '100%' }}> 
+                        <SettingsNavigation 
+                            currentView={settingsView}
+                            onChangeView={setSettingsView}
+                            onClose={() => settingsSheetRef.current?.dismiss()}
+                            user={user}
+                            authenticateUser={authenticateUser}
+                            navigation={navigation}
+                            onLogout={onLogout}
+                            fontScale={fontScale}
+                            changeFontScale={changeFontScale}
+                            renderPasswordForm={renderPasswordSettings}
+                        />
+                    </View>
+                </BottomSheetModal>
+                <Modal animationType="slide" transparent={false} visible={showInAppMap} onRequestClose={() => setShowInAppMap(false)}>
                         <View style={styles.mapModalContainer}>
                             <View style={styles.mapHeader}>
                                 <View style={{ flex: 1 }}><AppText style={styles.mapHeaderTitle}>ตำแหน่งของคุณ</AppText><AppText style={styles.mapHeaderSub} numberOfLines={1}>{address}</AppText></View>
@@ -1405,77 +1583,7 @@ const SettingsNavigation = ({
                                 </MapView>
                             ) : <ActivityIndicator size="large" style={{flex:1}} />}
                         </View>
-                    </Modal>
-                    <Modal
-                        transparent={true}
-                        visible={showPopover}
-                        animationType="fade"
-                        onRequestClose={() => setShowPopover(false)}
-                    >
-                         <TouchableOpacity 
-                            style={styles.popoverOverlay} 
-                            activeOpacity={1} 
-                            onPress={() => setShowPopover(false)}
-                        >
-                            <TouchableWithoutFeedback>
-                                <View style={styles.popoverContainer}>
-                                    <View style={styles.popoverArrow} />
-
-                                    <View style={styles.popoverHeader}>
-                                        <AppText style={styles.popoverTitle}>การแจ้งเตือน</AppText>
-                                        <TouchableOpacity onPress={() => setShowPopover(false)}>
-                                            <AppText style={styles.popoverCloseText}>ปิด</AppText>
-                                        </TouchableOpacity>
-                                    </View>
-
-                                    <ScrollView style={{ maxHeight: 300 }}>
-                                        {notificationList.length === 0 ? (
-                                            <View style={{ padding: 30, alignItems: 'center' }}>
-                                                <Bell size={40} color="#E2E8F0" />
-                                                <AppText style={{ color: '#94A3B8', marginTop: 10 }}>ไม่มีการแจ้งเตือนใหม่</AppText>
-                                            </View>
-                                        ) : (
-                                            notificationList.map((item, index) => {
-                                                const style = getNotifIcon(item.type);
-                                                const IconComponent = style.icon;
-
-                                                return (
-                                                    <TouchableOpacity 
-                                                        key={item.id || index} 
-                                                        style={[
-                                                            styles.popoverItem, 
-                                                            !item.read && { backgroundColor: '#F8FAFC' } 
-                                                        ]}
-                                                        activeOpacity={0.7}
-                                                    >
-                                                        <View style={[styles.popoverIconBox, { backgroundColor: style.bg }]}>
-                                                            <IconComponent size={20} color={style.color} />
-                                                        </View>
-                                                        <View style={{ flex: 1 }}>
-                                                            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                                                                <AppText style={styles.popoverItemTitle} numberOfLines={1}>
-                                                                    {item.title}
-                                                                </AppText>
-                                                                {!item.read && <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#EF4444', marginTop: 6 }} />}
-                                                            </View>
-                                                            
-                                                            <AppText style={styles.popoverItemDesc} numberOfLines={2}>
-                                                                {item.body}
-                                                            </AppText>
-                                                            <AppText style={styles.popoverItemTime}>
-                                                                {item.time}
-                                                            </AppText>
-                                                        </View>
-                                                    </TouchableOpacity>
-                                                );
-                                            })
-                                        )}
-                                    </ScrollView>
-                                </View>
-                            </TouchableWithoutFeedback>
-                        </TouchableOpacity>
-                    </Modal>
-
+                </Modal>            
             </SafeAreaView>
         </GestureHandlerRootView>
     );
@@ -1564,7 +1672,12 @@ const styles = StyleSheet.create({
     },
 
     // SOS Area (Updated)
-    mainInteractiveArea: { flex: 1, alignItems: 'center', justifyContent: 'center', marginVertical: 30 },
+    mainInteractiveArea: { 
+        flex: 1, 
+        alignItems: 'center', 
+        justifyContent: 'center', 
+        marginVertical: 10, // ✅ ลดจาก 30 เหลือ 10 เพื่อดึงพื้นที่คืน
+    },
     headerTextContainer: { alignItems: 'center', marginBottom: 20 },
     title: { fontSize: 32, fontWeight: '900', color: '#1E293B' },
     
@@ -1735,8 +1848,44 @@ const styles = StyleSheet.create({
     mapHeaderTitle: { fontSize: 18, fontWeight: 'bold' },
     mapHeaderSub: { fontSize: 12, color: '#94A3B8' },
     popoverOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.2)' },
-    popoverContainer: { position: 'absolute', top: 65, right: 20, width: 300, backgroundColor: 'white', borderRadius: 16, zIndex: 9999 },
-    popoverArrow: { position: 'absolute', top: -10, right: 65, width: 20, height: 20, backgroundColor: 'white', transform: [{ rotate: '45deg' }], shadowColor: "#000", shadowOffset: { width: -2, height: -2 }, shadowOpacity: 0.1, shadowRadius: 2, elevation: 2, zIndex: 1 },
+    popoverContainer: { 
+        position: 'absolute', 
+        top: 100,          // 1. เพิ่มค่า top (จาก 65) ให้ลงมาต่ำอีกนิด ไม่ทับ Header เกินไป
+        right: 20, 
+        width: 300, 
+        backgroundColor: 'white', 
+        borderRadius: 16, 
+        zIndex: 9999,
+        // เพิ่มเงาให้ชัดขึ้น
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.15,
+        shadowRadius: 12,
+        elevation: 10,
+    },
+
+    popoverArrow: { 
+        position: 'absolute', 
+        top: -10, 
+        
+        // ใส่ค่าที่คุณปรับแล้วว่าตรงเป๊ะๆ (เช่น 110 หรือ 112)
+        right: 50, 
+        
+        width: 20, 
+        height: 20, 
+        
+        // ✅ เปลี่ยนกลับเป็นสีขาว
+        backgroundColor: 'white', 
+        
+        transform: [{ rotate: '45deg' }], 
+        zIndex: 1,
+        
+        // (เสริม) ใส่เงาเล็กน้อยเพื่อให้กลืนกับกล่องหลัก (ถ้าต้องการ)
+        shadowColor: "#000",
+        shadowOffset: { width: -2, height: -2 }, // เงาขึ้นด้านบนซ้าย
+        shadowOpacity: 0.05,
+        shadowRadius: 2,
+    },
     popoverHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
     popoverTitle: { fontSize: 16, fontWeight: 'bold', color: '#1E293B' },
     popoverCloseText: { fontSize: 14, color: '#64748B' },
@@ -1748,6 +1897,97 @@ const styles = StyleSheet.create({
     loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#FFFFFF' },
     loadingIconContainer: { marginBottom: 30, shadowColor: '#EF4444', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.2, shadowRadius: 20, elevation: 10 },
     loadingTitle: { fontSize: 24, fontWeight: '900', color: '#1E293B', letterSpacing: 1 },
+
+    // --- [เพิ่ม Styles ใหม่] ---
+    detailModalOverlay: {
+        flex: 1,
+        backgroundColor: 'rgba(0,0,0,0.5)', // พื้นหลังสีดำจางๆ
+        justifyContent: 'center',          // จัดกึ่งกลางแนวตั้ง
+        alignItems: 'center',              // จัดกึ่งกลางแนวนอน
+        padding: 20,
+    },
+    detailModalContainer: {
+        width: '100%',
+        maxWidth: 340,                     // ความกว้างสูงสุดของกล่อง
+        backgroundColor: 'white',
+        borderRadius: 24,                  // ขอบมน
+        padding: 24,
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 10 },
+        shadowOpacity: 0.15,
+        shadowRadius: 20,
+        elevation: 10,
+    },
+    detailModalHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',   // ไอคอนซ้าย ปุ่มปิดขวา
+        alignItems: 'flex-start',
+        marginBottom: 15,
+    },
+    detailIconCircle: {
+        width: 50,
+        height: 50,
+        borderRadius: 25,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    closeDetailButton: {
+        padding: 8,
+        backgroundColor: '#F1F5F9',
+        borderRadius: 20,
+    },
+    detailTitle: {
+        fontSize: 18,
+        fontWeight: 'bold',
+        color: '#1E293B',
+        marginBottom: 6,
+    },
+    detailTime: {
+        fontSize: 13,
+        color: '#94A3B8',
+        marginBottom: 15,
+    },
+    detailDivider: {
+        height: 1,
+        backgroundColor: '#F1F5F9',        // เส้นคั่นสีเทาอ่อน
+        marginBottom: 15,
+    },
+    detailBody: {
+        fontSize: 15,
+        color: '#334155',
+        lineHeight: 24,                    // ระยะห่างบรรทัดให้อ่านสบายตา
+    },
+    detailOkButton: {
+        marginTop: 25,
+        backgroundColor: '#F1F5F9',        // ปุ่มสีเทาอ่อน
+        paddingVertical: 12,
+        borderRadius: 12,
+        alignItems: 'center',
+    },
+    detailOkText: {
+        color: '#475569',
+        fontWeight: 'bold',
+        fontSize: 15,
+    },
+    privacyContentBox: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    // ห้ามใส่ height เด็ดขาด!
+    // ห้ามใส่ flex: 1 เด็ดขาด!
+},
+privacySectionTitle: {
+    fontWeight: 'bold',
+    color: '#1E293B',
+    marginBottom: 5,
+},
+privacyBody: {
+    color: '#475569',
+    lineHeight: 22,
+    textAlign: 'justify',
+},
 });
 
 export default HomeScreen;
@@ -1788,3 +2028,5 @@ export default HomeScreen;
 // 17. เพิ่มปุ่ม "โทรด่วน" (Direct Call) ในหน้าหลัก เพื่อให้ผู้ใช้สามารถโทรหาสายด่วนได้ทันทีในกรณีฉุกเฉิน
 
 // 18. เพิ่มข้อความแจ้งเตือนเมื่ออุปกรณ์อยู่ในสถานะออฟไลน์ (Offline Warning) เพื่อเตือนให้ผู้ใช้ตรวจสอบการเชื่อมต่ออินเทอร์เน็ต
+
+// 19. เพิ่มหน้าการแจ้งเตือน (Notifications) เพื่อให้ผู้ใช้สามารถดูประวัติการแจ้งเตือนทั้งหมดได้

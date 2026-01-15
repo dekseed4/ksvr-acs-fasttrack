@@ -6,10 +6,10 @@ import { Platform } from 'react-native';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
-    shouldShowBanner: true, // <--- ใช้ตัวนี้แทน (ให้แสดงป้ายเด้งลงมา)
-    shouldShowList: true,   // <--- ใช้ตัวนี้แทน (ให้แสดงในรายการแจ้งเตือน)
+    shouldShowBanner: true, // ให้เด้งเตือนด้านบน
+    shouldShowList: true,   // ให้เก็บในลิสต์แจ้งเตือน
     shouldPlaySound: true,
-    shouldSetBadge: true,
+    shouldSetBadge: false,
   }),
 });
 
@@ -47,12 +47,12 @@ export const usePushNotifications = () => {
 
     return () => {
       // ใช้ .remove() แทน
-      if (notificationListener.current) {
-        notificationListener.current.remove();
-      }
-      if (responseListener.current) {
-        responseListener.current.remove();
-      }
+        if (notificationListener.current) {
+            notificationListener.current.remove();
+        }
+        if (responseListener.current) {
+            responseListener.current.remove();
+        }
     };
   }, []);
 

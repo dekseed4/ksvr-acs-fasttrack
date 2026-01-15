@@ -53,7 +53,7 @@ const ProfileScreen = ({ navigation }) => {
         <View style={{ width: 24 }} /> 
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 10 }}>
         <View style={{ padding: 20 }}>
           
           {/* Medical Card Section */}

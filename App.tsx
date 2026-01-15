@@ -11,6 +11,7 @@ import ProfileScreen from './app/screens/ProfileScreen';
 import HospitalMapScreen from './app/screens/HospitalMapScreen';
 import KnowledgeScreen from './app/screens/KnowledgeScreen';
 import TermsConsentScreen from './app/screens/TermsConsentScreen';
+import NotificationScreen from './app/screens/NotificationScreen';
 import { ThemeProvider } from './app/context/ThemeContext';
 import { View, Text, ActivityIndicator, StyleSheet, Platform } from 'react-native';
 import { AppText } from './app/components/AppText';
@@ -41,10 +42,29 @@ function AppTabs() {
                         return <Map {...iconProps} />;
                     }
                 },
-                tabBarActiveTintColor: 'tomato',
-                tabBarInactiveTintColor: 'gray',
+                // tabBarActiveTintColor: 'tomato',
+                // tabBarInactiveTintColor: 'gray',
                 // ซ่อน Title ตรง Header แต่เก็บปุ่ม Logout ไว้
                 headerTitle: '',
+                tabBarActiveTintColor: '#EF4444', // สีแดงเมื่อเลือก
+    tabBarInactiveTintColor: '#94A3B8', // สีเทาเมื่อไม่ได้เลือก
+    tabBarStyle: {
+      backgroundColor: '#FFFFFF', // พื้นหลังขาว
+      borderTopWidth: 0, // ลบเส้นขอบด้านบนออก (ช่วยให้รอยต่อที่คุณวงหายไป)
+      elevation: 10, // เงาสำหรับ Android
+      shadowColor: '#000', // เงาสำหรับ iOS
+      shadowOffset: { width: 0, height: -4 },
+      shadowOpacity: 0.05,
+      shadowRadius: 10,
+      height: Platform.OS === 'ios' ? 88 : 65, // ปรับความสูงให้เหมาะกับแต่ละระบบ
+      paddingBottom: Platform.OS === 'ios' ? 30 : 10, // จัดระยะตัวอักษรไม่ให้จม
+      paddingTop: 10,
+    },
+    tabBarLabelStyle: {
+      fontSize: 12,
+      fontWeight: '600',
+      marginBottom: 5,
+    }
             })} 
         >
             <Tab.Screen 
@@ -105,6 +125,7 @@ export const Layout = () => {
                 {authState?.authenticated ? (
                     showConsentScreen ? (
                         <Stack.Screen name="TermsConsentScreen" component={TermsConsentScreen} />
+                        
                     ) : (
                         <Stack.Group>
                             <Stack.Screen name="AppTabs" component={AppTabs} />
@@ -112,6 +133,11 @@ export const Layout = () => {
                                 name="Profile" 
                                 component={ProfileScreen} 
                                 options={{ headerShown: false }} 
+                            />
+                            <Stack.Screen 
+                                name="Notifications" 
+                                component={NotificationScreen} 
+                                options={{ headerShown: false }} // ซ่อน Header ของ Stack เพราะเราสร้างเองในไฟล์แล้ว
                             />
                         </Stack.Group>
                     )

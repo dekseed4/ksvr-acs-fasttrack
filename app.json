@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "ksvr-acs-fasttrack",
+    "name": "KSVR ACS FAST TRACK",
     "slug": "ksvr-acs-fasttrack",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -8,54 +8,61 @@
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "jsEngine": "hermes",
-    "splash": {
-      "image": "./assets/splash-icon.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
-    },
     "ios": {
       "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "แอปต้องการเข้าถึงตำแหน่งเพื่อส่งรถพยาบาลไปหาคุณและค้นหาโรงพยาบาลที่ใกล้ที่สุดและนำทางไปยังจุดหมาย",
-        "NSFaceIDUsageDescription": "ขออนุญาตใช้ FaceID เพื่อยืนยันตัวตนก่อนเข้าถึงข้อมูลสุขภาพส่วนบุคคล",
-        "NSLocationAlwaysAndWhenInUseUsageDescription": "แอปต้องการเข้าถึงตำแหน่งของคุณเพื่อแจ้งเตือนเมื่ออยู่ใกล้โรงพยาบาล"
+        "NSLocationWhenInUseUsageDescription": "แอปพลิเคชันต้องการเข้าถึงตำแหน่งพิกัดขณะใช้งาน เพื่อให้ทีมแพทย์สามารถส่งรถพยาบาลไปช่วยเหลือคุณได้อย่างแม่นยำในกรณีเกิดเหตุฉุกเฉิน",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "แอปพลิเคชันต้องการเข้าถึงตำแหน่งพิกัดตลอดเวลา เพื่อติดตามตำแหน่งของคุณแบบเรียลไทม์ขณะที่รถพยาบาลกำลังเดินทางไปช่วยเหลือ แม้ในขณะที่แอปพลิเคชันทำงานอยู่เบื้องหลัง",
+        "NSLocationAlwaysUsageDescription": "แอปพลิเคชันต้องการเข้าถึงตำแหน่งพิกัดตลอดเวลาเพื่อประสิทธิภาพสูงสุดในการช่วยชีวิตผู้ป่วยฉุกเฉิน",
+        "NSFaceIDUsageDescription": "ขออนุญาตใช้ Face ID เพื่อยืนยันตัวตนก่อนเข้าถึงข้อมูลสุขภาพและข้อมูลส่วนบุคคลของผู้ป่วย",
+        "UIBackgroundModes": [
+          "location",
+          "remote-notification"
+        ]
       },
       "bundleIdentifier": "com.ksvr.acsfasttrack",
-      "buildNumber": "1.0.0",
+      "buildNumber": "1",
       "supportsTablet": true,
       "config": {
         "usesNonExemptEncryption": false
       }
     },
     "android": {
-      "config": {
-        "googleMaps": {
-          "apiKey": "ใส่_GOOGLE_MAPS_API_KEY_ของคุณที่นี่"
-        }
-      },
-      "permissions": [
-        "ACCESS_FINE_LOCATION",
-        "ACCESS_COARSE_LOCATION"
-      ],
       "package": "com.ksvr.acsfasttrack",
       "versionCode": 1,
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_BACKGROUND_LOCATION",
+        "FOREGROUND_SERVICE",
+        "FOREGROUND_SERVICE_LOCATION",
+        "VIBRATE",
+        "RECEIVE_BOOT_COMPLETED"
+      ],
+      "config": {
+        "googleMaps": {
+          "apiKey": "ใส่_GOOGLE_MAPS_API_KEY_จริงของคุณที่นี่"
+        }
+      },
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
-      },
-      "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
-    },
-    "web": {
-      "favicon": "./assets/favicon.png"
+      }
     },
     "plugins": [
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "อนุญาตให้เข้าถึงตำแหน่งเพื่อความแม่นยำในการระบุจุดเกิดเหตุและส่งรถพยาบาลช่วยเหลือผู้ป่วย"
+        }
+      ],
       [
         "expo-secure-store",
         {
           "configureAndroidBackup": true,
-          "faceIDPermission": "Allow $(PRODUCT_NAME) to access your Face ID biometric data."
+          "faceIDPermission": "ยินยอมให้ใช้ Face ID เพื่อปกป้องข้อมูลสุขภาพส่วนบุคคลของท่าน"
         }
       ],
+      "expo-notifications",
       "expo-maps"
     ],
     "extra": {
