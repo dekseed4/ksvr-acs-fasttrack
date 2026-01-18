@@ -19,14 +19,11 @@ import {
 import { 
   Phone, 
   Lock, 
-  Activity, 
   ChevronRight, 
   ShieldCheck, 
   Eye, 
   EyeOff,
-  Stethoscope,
   Clock,
-  Heart
 } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';

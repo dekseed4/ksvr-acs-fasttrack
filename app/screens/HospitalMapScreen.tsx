@@ -20,7 +20,7 @@ const HOSPITALS = [
         address: "1041 ถ. เรืองสวัสดิ์", 
         latitude: 17.1634287,
         longitude: 104.1583068, 
-        phone: "042-711711" 
+        phone: "+6642711711" 
     },
     { 
         id: 3, 
@@ -28,7 +28,7 @@ const HOSPITALS = [
         address: "ถ.รอบเมือง", 
         latitude: 17.162272, 
         longitude: 104.144814,  
-        phone: "042-712800" 
+        phone: "+6642712800" 
     },
     { 
         id: 4, 
@@ -36,7 +36,7 @@ const HOSPITALS = [
         address: "ถ.ประชาอุทิศ", 
         latitude: 17.173515, 
         longitude: 104.126533, 
-        phone: "042-092888" 
+        phone: "+6642092888" 
     },
 ];
 

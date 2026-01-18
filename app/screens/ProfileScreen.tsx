@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   TouchableOpacity,
   ScrollView,
@@ -10,7 +9,6 @@ import {
 } from 'react-native';
 import {
   User,
-  X,
   AlertTriangle,
   Phone,
   ChevronLeft
@@ -60,9 +58,11 @@ const ProfileScreen = ({ navigation }) => {
           <View style={styles.medicalCard}>
             <View style={styles.medicalHeaderCenter}>
               <View style={styles.medicalAvatarLarge}>
-                {user?.picture_profile && !imageLoadError ? (
+                {user?.detail_genaral?.picture_profile &&
+                 user?.detail_genaral?.picture_profile !== 'default.jpg' &&
+                 !imageLoadError ? (
                   <Image 
-                    source={{ uri: `https://ksvrhospital.go.th/krit-siwara_smart_heart/files/avatars/${user.picture_profile}` }}
+                    source={{ uri: `https://ksvrhospital.go.th/krit-siwara_smart_heart/files/avatars/${user.detail_genaral?.picture_profile}` }}
                     style={{ width: '100%', height: '100%', borderRadius: 30 }}
                     resizeMode="cover"
                     onError={() => setImageLoadError(true)}

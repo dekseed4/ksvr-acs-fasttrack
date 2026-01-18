@@ -15,28 +15,24 @@ import {
   StatusBar,
   Image,
   Alert,
-  TouchableWithoutFeedback,
   TextInput,
-  PanResponder,
   AppState,
   LayoutAnimation, 
-  UIManager, 
   DeviceEventEmitter,
+  Vibration
 } from 'react-native';
 
 import { useNavigation } from '@react-navigation/native'; 
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { 
   BottomSheetModal, 
-  BottomSheetModalProvider, 
   BottomSheetBackdrop, 
   BottomSheetScrollView,
-  BottomSheetView
 } from '@gorhom/bottom-sheet';
 
 import { 
     SlideInRight, SlideOutRight, 
-    SlideInLeft, SlideOutLeft, 
+    SlideInLeft, SlideOutLeft, FadeInUp 
 } from 'react-native-reanimated';
 
 import MapView, { Marker, PROVIDER_GOOGLE, Circle as MapCircle } from 'react-native-maps';
@@ -49,38 +45,26 @@ import { AppText } from '../components/AppText';
 import { useTheme, FONT_SCALES } from '../context/ThemeContext';
 import * as Notifications from 'expo-notifications';
 import NetInfo from '@react-native-community/netinfo';
-
 import Svg, { Circle } from 'react-native-svg';
 import {
   Heart,
   MapPin,
-  Activity,
-  Clock,
   AlertTriangle,
   Zap,
   User,
   ShieldCheck,
-  Info,
   ChevronRight,
   ChevronLeft,
-  Navigation,
   X,
   Settings,
-  LogOut,
   Bell,
   UserCircle,
   FileText,
-  Lock,
   Phone,
-  Pill,
   FileHeart, 
-  Contact,
-  Menu,
   Calendar, 
-  Hash, 
   Key,      
   Type,      
-  Globe,     
   PhoneCall, 
   Info as InfoIcon,
   Check,
@@ -988,6 +972,7 @@ const HomeScreen = () => {
                     console.log('App going to background -> Stop GPS');
                     watchSubscription.current.remove();
                     watchSubscription.current = null;
+                    
                 }
             }
 
@@ -998,6 +983,19 @@ const HomeScreen = () => {
             subscription.remove();
         };
     }, [isCalling]);
+
+    useEffect(() => {
+        const timeElapsed = calculateTravelTime(distance) - secondsLeft;
+        
+        // ถ้าเวลาผ่านไปครบ 180 วินาทีพอดี ให้สั่นเตือน
+        if (isCalling && timeElapsed === 180) {
+            // รูปแบบการสั่น: [รอ 0ms, สั่น 500ms, รอ 200ms, สั่น 500ms]
+            const PATTERN = [0, 500, 200, 500]; 
+            Vibration.vibrate(PATTERN);
+            
+            console.log("Vibrating: ER Call button appeared");
+        }
+    }, [secondsLeft, isCalling]);
 
     const strokeDashoffset = circumference - (pressProgress / 100) * circumference;
 
@@ -1166,7 +1164,7 @@ const HomeScreen = () => {
                             <View style={styles.menuGroupContainer}>
                                 <LineMenuItem fontScale={fontScale} icon={PhoneCall} color="#EF4444" label="ติดต่อโรงพยาบาล" onPress={() => onChangeView('contact')} />
                                 <View style={styles.separator} />
-                                <LineMenuItem fontScale={fontScale} icon={FileText} color="#64748B" label="นโยบายความเป็นส่วนตัว" onPress={() => onChangeView('privacy')} />
+                                <LineMenuItem fontScale={fontScale} icon={FileText} color="#64748B" label="ข้อกำหนดและนโยบายความเป็นส่วนตัว" onPress={() => onChangeView('privacy')} />
                                 <View style={styles.separator} />
                                 <LineMenuItem fontScale={fontScale} icon={InfoIcon} color="#64748B" label="เกี่ยวกับแอป" onPress={() => onChangeView('about')} />
                             </View>
@@ -1249,68 +1247,80 @@ const HomeScreen = () => {
             // ค้นหาส่วนนี้ใน HomeScreen.tsx แล้วแทนที่ด้วยโค้ดด้านล่างนี้ครับ
             if (currentView === 'privacy') {
                 return (
-                    <Animated.View 
-                        key="privacy" 
-                        entering={subEntering} 
-                        exiting={subExiting} 
-                        style={{ flex: 1 }} // ลบ position: 'relative' ออกเพื่อให้จัดการง่ายขึ้น
-                    >
-                        {/* ✅ 1. ย้าย Header มาไว้บรรทัดแรก เพื่อไม่ให้ทับซ้อนเลเยอร์การสัมผัส */}
+                    <Animated.View key="privacy" entering={subEntering} exiting={subExiting} style={{ flex: 1 }}>
                         <Header title="นโยบายความเป็นส่วนตัว" showBack={true} />
-
-                        {/* ✅ 2. ใช้ BottomSheetScrollView โดยกำหนดสไตล์ให้ชัดเจน */}
-                    <BottomSheetScrollView 
-                            // ✅ สำหรับ Android: ระบุ flex: 1 ให้ชัดเจนที่สไตล์หลัก
-                            style={{ flex: 1 }} 
+                        
+                        <BottomSheetScrollView 
+                            style={{ flex: 1 }}
                             contentContainerStyle={{ 
                                 paddingHorizontal: 20, 
-                                // ✅ ใช้ค่าคงที่ HEADER_HEIGHT + พื้นที่เว้นว่าง
                                 paddingTop: HEADER_HEIGHT + 20, 
-                                paddingBottom: 30, 
+                                paddingBottom: 200, 
                                 flexGrow: 1 
                             }}
-                            // ✅ สำหรับ Android: ป้องกันไม่ให้ BottomSheet แย่งคำสั่งเลื่อนนิ้วแนวตั้ง
-                            nestedScrollEnabled={true} 
-                            // ✅ สำหรับ Android: ปรับค่าการสัมผัสให้ไวขึ้น
-                            activeOffsetY={[-5, 5]} 
                         >
-                            {/* ส่วนหัวเนื้อหา */}
-                            <View style={{ alignItems: 'center', marginBottom: 20 }}>
-                                <ShieldCheck size={48 * fontScale} color="#10B981" />
-                                <AppText style={[styles.contactTitle, { fontSize: 20 * fontScale, marginTop: 10 }]}>
-                                    นโยบายความเป็นส่วนตัว
+                            {/* ส่วนหัวแสดงความน่าเชื่อถือ */}
+                            <View style={{ alignItems: 'center', marginBottom: 25 }}>
+                                <ShieldCheck size={56 * fontScale} color="#10B981" />
+                                <AppText style={[styles.contactTitle, { fontSize: 20 * fontScale, marginTop: 12, textAlign: 'center' }]}>
+                                    ข้อกำหนดและนโยบายคุ้มครองข้อมูลส่วนบุคคล
                                 </AppText>
-                                <AppText style={[styles.contactSubtitle, { fontSize: 13 * fontScale }]}>
+                                <AppText style={[styles.contactSubtitle, { fontSize: 13 * fontScale, color: '#94A3B8' }]}>
                                     ปรับปรุงล่าสุด: 15 มกราคม 2569
                                 </AppText>
                             </View>
 
-                            {/* ส่วนกล่องเนื้อหา (ตรวจสอบ styles.privacyContentBox ว่าไม่มีการใส่ height ตายตัว) */}
                             <View style={styles.privacyContentBox}>
-                                <AppText style={[styles.privacySectionTitle, { fontSize: 16 * fontScale }]}>1. การเก็บรวบรวมข้อมูล</AppText>
-                                <AppText style={[styles.privacyBody, { fontSize: 14 * fontScale }]}>
-                                    แอปพลิเคชันจะจัดเก็บข้อมูลที่จำเป็นต่อการช่วยชีวิต ได้แก่ ชื่อ-นามสกุล, หมายเลขโทรศัพท์, ข้อมูลสิทธิการรักษา (HN) และข้อมูลสุขภาพเบื้องต้นที่เกี่ยวข้องกับโรคหลอดเลือดหัวใจ
+                                {/* ส่วนที่ 1: ข้อกำหนดการใช้งาน */}
+                                <AppText style={[styles.privacySectionTitle, { fontSize: 17 * fontScale, color: '#1E293B' }]}>
+                                    ส่วนที่ 1: ข้อกำหนดและเงื่อนไขการใช้บริการ
+                                </AppText>
+                                <AppText style={[styles.privacyBody, { fontSize: 14 * fontScale, marginBottom: 15 }]}>
+                                    การใช้งานแอปพลิเคชันนี้ ถือว่าท่านยอมรับข้อกำหนดทุกประการ บริการนี้จัดทำขึ้นเพื่อสนับสนุนการช่วยเหลือผู้ป่วยฉุกเฉินกลุ่มโรคหลอดเลือดหัวใจ (ACS) โดยโรงพยาบาลค่ายกฤษณ์สีวะรา ผู้ใช้งานมีหน้าที่ให้ข้อมูลที่เป็นจริงเพื่อประโยชน์ในการรักษาพยาบาล
                                 </AppText>
 
-                                <AppText style={[styles.privacySectionTitle, { fontSize: 16 * fontScale, marginTop: 15 }]}>2. ข้อมูลตำแหน่ง (Location Data)</AppText>
-                                <AppText style={[styles.privacyBody, { fontSize: 14 * fontScale }]}>
-                                    ในกรณีฉุกเฉิน แอปพลิเคชันจะเข้าถึงข้อมูลพิกัดดาวเทียม (GPS) ของคุณเพื่อส่งให้ทีมแพทย์ทราบตำแหน่งที่ชัดเจนสำหรับการเข้าช่วยเหลืออย่างเร่งด่วน แม้ในขณะที่แอปพลิเคชันทำงานอยู่เบื้องหลัง
-                                </AppText>
+                                <View style={styles.detailDivider} />
 
-                                <AppText style={[styles.privacySectionTitle, { fontSize: 16 * fontScale, marginTop: 15 }]}>3. การรักษาความปลอดภัย</AppText>
-                                <AppText style={[styles.privacyBody, { fontSize: 14 * fontScale }]}>
-                                    ข้อมูลของคุณจะถูกจัดเก็บตามมาตรฐานความปลอดภัยทางคอมพิวเตอร์ และจำกัดการเข้าถึงเฉพาะเจ้าหน้าที่ทางการแพทย์ที่เกี่ยวข้องของ รพ.ค่ายกฤษณ์สีวะรา เท่านั้น
-                                </AppText>
-
-                                <AppText style={[styles.privacySectionTitle, { fontSize: 16 * fontScale, marginTop: 15 }]}>4. การเปิดเผยข้อมูล</AppText>
-                                <AppText style={[styles.privacyBody, { fontSize: 14 * fontScale }]}>
-                                    เราจะไม่มีการนำข้อมูลส่วนบุคคลของคุณไปจำหน่ายหรือเผยแพร่แก่บุคคลภายนอก เว้นแต่จะเป็นการส่งต่อข้อมูลเพื่อส่งต่อการรักษา (Refer) ระหว่างสถานพยาบาลตามระเบียบของกระทรวงสาธารณสุข
+                                {/* ส่วนที่ 2: รายละเอียดนโยบาย PDPA */}
+                                <AppText style={[styles.privacySectionTitle, { fontSize: 17 * fontScale, color: '#1E293B', marginTop: 10 }]}>
+                                    ส่วนที่ 2: นโยบายความเป็นส่วนตัว (Privacy Policy)
                                 </AppText>
                                 
-                                {/* เพิ่มข้อความเพื่อทดสอบความยาว */}
-                                <AppText style={[styles.privacySectionTitle, { fontSize: 16 * fontScale, marginTop: 15 }]}>5. การติดต่อ</AppText>
+                                <AppText style={[styles.privacySectionTitle, { fontSize: 15 * fontScale, marginTop: 10 }]}>
+                                    1. ข้อมูลที่เราจัดเก็บและประมวลผล
+                                </AppText>
                                 <AppText style={[styles.privacyBody, { fontSize: 14 * fontScale }]}>
-                                    หากท่านมีข้อสงสัยเกี่ยวกับนโยบายความเป็นส่วนตัวนี้ ท่านสามารถติดต่อเจ้าหน้าที่คุ้มครองข้อมูลส่วนบุคคลของโรงพยาบาลได้ตามช่องทางที่ระบุในหน้าติดต่อ
+                                    • ข้อมูลระบุตัวตน: ชื่อ-นามสกุล, เลขประจำตัวผู้ป่วย (HN), เลขบัตรประชาชน {"\n"}
+                                    • ข้อมูลสุขภาพ: โรคประจำตัว, ประวัติการแพ้ยา, สิทธิการรักษา {"\n"}
+                                    • ข้อมูลตำแหน่ง: พิกัดภูมิศาสตร์ (GPS) แบบเรียลไทม์ (Background Location) เมื่อมีการกดแจ้งเหตุ
+                                </AppText>
+
+                                <AppText style={[styles.privacySectionTitle, { fontSize: 15 * fontScale, marginTop: 15 }]}>
+                                    2. วัตถุประสงค์ในการนำข้อมูลไปใช้
+                                </AppText>
+                                <AppText style={[styles.privacyBody, { fontSize: 14 * fontScale }]}>
+                                    โรงพยาบาลจะใช้ข้อมูลพิกัดและข้อมูลสุขภาพเพื่อระบุตำแหน่งผู้ป่วยและส่งทีมกู้ชีพเข้าช่วยเหลืออย่างเร่งด่วน โดยจำกัดการเข้าถึงเฉพาะบุคลากรทางการแพทย์ที่เกี่ยวข้องเท่านั้น
+                                </AppText>
+
+                                <AppText style={[styles.privacySectionTitle, { fontSize: 15 * fontScale, marginTop: 15 }]}>
+                                    3. การรักษาความปลอดภัยและความลับ
+                                </AppText>
+                                <AppText style={[styles.privacyBody, { fontSize: 14 * fontScale }]}>
+                                    ข้อมูลของท่านจะได้รับการเข้ารหัสตามมาตรฐานสากล (Encryption) และจัดเก็บในระบบที่ปลอดภัยสูงเพื่อป้องกันการเข้าถึงโดยมิชอบ
+                                </AppText>
+
+                                <AppText style={[styles.privacySectionTitle, { fontSize: 15 * fontScale, marginTop: 15 }]}>
+                                    4. สิทธิของเจ้าของข้อมูลส่วนบุคคล
+                                </AppText>
+                                <AppText style={[styles.privacyBody, { fontSize: 14 * fontScale }]}>
+                                    ท่านมีสิทธิในการขอเข้าถึง ขอแก้ไข ขอคัดค้าน หรือขอให้ลบข้อมูลส่วนบุคคลของท่านได้ทุกเมื่อ โดยสามารถติดต่อศูนย์ข้อมูลของโรงพยาบาล
+                                </AppText>
+
+                                <View style={{ height: 1, backgroundColor: '#F1F5F9', marginVertical: 20 }} />
+
+                                <AppText style={[styles.privacyBody, { fontSize: 13 * fontScale, color: '#64748B', textAlign: 'center' }]}>
+                                    โรงพยาบาลค่ายกฤษณ์สีวะรา จังหวัดสกลนคร {"\n"}
+                                    โทรศัพท์ฉุกเฉิน: 064-7906014
                                 </AppText>
                             </View>
                         </BottomSheetScrollView>
@@ -1541,6 +1551,49 @@ const HomeScreen = () => {
                                         <View style={styles.dispatchedInfo}><Zap size={24} color="#FACC15" /><View style={{ marginLeft: 15 }}><AppText style={styles.unitTitle}>{HOSPITAL_COORDS.name}</AppText><AppText style={styles.unitSub}>เจ้าหน้าที่กำลังเดินทาง</AppText></View></View>
                                     </View>
                                     <View style={styles.checklistContainer}><AppText style={styles.checklistHeader}>ข้อปฏิบัติระหว่างรอ:</AppText>{[{ text: 'นั่งนิ่งๆ หายใจช้าๆ', bold: true }, { text: 'อมยาใต้ลิ้นทันที (ถ้ามี)', bold: true }, { text: 'ปลดกระดุมเสื้อให้หายใจสะดวก', bold: false }].map((item, i) => (<View key={i} style={styles.checkItem}><View style={[styles.checkCircle, item.bold && {borderColor: '#EF4444'}]} /><AppText style={[styles.checkText, item.bold && {fontWeight: 'bold'}]}>{item.text}</AppText></View>))}</View>
+                                   {(calculateTravelTime(distance) - secondsLeft >= 180) && (
+                                        <Animated.View 
+                                            entering={FadeInUp.duration(600)} // ใช้ FadeInUp ให้ปุ่มเด้งขึ้นมาดูเด่น
+                                            style={{ width: '100%' }}
+                                        >
+                                            <TouchableOpacity 
+                                                style={[
+                                                    styles.directCallButton, 
+                                                    { 
+                                                        backgroundColor: '#FEF2F2', 
+                                                        borderColor: '#FECACA', 
+                                                        borderWidth: 1,
+                                                        paddingVertical: 12,
+                                                        borderRadius: 12,
+                                                        flexDirection: 'row',
+                                                        justifyContent: 'center',
+                                                        alignItems: 'center',
+                                                        shadowColor: '#EF4444',
+                                                        shadowOffset: { width: 0, height: 2 },
+                                                        shadowOpacity: 0.1,
+                                                        shadowRadius: 4,
+                                                        elevation: 2
+                                                    }
+                                                ]} 
+                                                onPress={() => Linking.openURL('tel:0647906014')}
+                                                activeOpacity={0.8}
+                                            >
+                                                <PhoneCall size={20} color="#EF4444" style={{ marginRight: 10 }} />
+                                                <AppText style={{ color: '#EF4444', fontWeight: 'bold', fontSize: 16 }}>
+                                                    โทรติดต่อโรงพยาบาลแผนก ER
+                                                </AppText>
+                                            </TouchableOpacity>
+                                            <AppText style={{ 
+                                                fontSize: 12, 
+                                                color: '#94A3B8', 
+                                                textAlign: 'center', 
+                                                marginTop: 8,
+                                                fontStyle: 'italic' 
+                                            }}>
+                                                *หากอาการเปลี่ยนแปลง หรือรอนานเกินไป โปรดโทรทันที
+                                            </AppText>
+                                        </Animated.View>
+                                    )}
                                     <TouchableOpacity onPress={handleCancelSOS} style={styles.cancelButton} hitSlop={{ top: 20, bottom: 20, left: 50, right: 50 }} activeOpacity={0.6} disabled={isSubmitting}>
                                         {isSubmitting ? <ActivityIndicator size="small" color="#94A3B8" /> : <AppText style={styles.cancelButtonText}>ยกเลิกรายการเรียก</AppText>}
                                     </TouchableOpacity>
@@ -1615,21 +1668,6 @@ const styles = StyleSheet.create({
         paddingBottom: 15, // ลด padding ด้านล่างเล็กน้อยเพื่อให้เข้ากับ Medical Stats
         backgroundColor: '#FFFFFF',
     },
-    profileMedicalStats: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        marginTop: 16, // เว้นระยะห่างจากชื่อ
-        backgroundColor: '#F8FAFC', // พื้นหลังสีเทาอ่อน
-        borderRadius: 16,
-        paddingVertical: 10,
-        paddingHorizontal: 15,
-        borderWidth: 1,
-        borderColor: '#F1F5F9',
-    },
-    medicalStatItem: {
-        flex: 1,
-        alignItems: 'center', // จัดกึ่งกลาง
-    },
     profileRow: { flexDirection: 'row', alignItems: 'center' },
     avatarContainerMain: { position: 'relative', marginRight: 16 },
     avatarCircleMain: { width: 60, height: 60, borderRadius: 30, backgroundColor: '#EF4444', justifyContent: 'center', alignItems: 'center', shadowColor: '#EF4444', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 4 },
@@ -1656,35 +1694,12 @@ const styles = StyleSheet.create({
     liveTextSmall: { fontSize: 9, fontWeight: '900', color: '#166534' },
     addressTextMain: { fontSize: 14, fontWeight: '600', color: '#1E293B', lineHeight: 20 },
 
-    // Mini Stats
-    miniStatsRow: { flexDirection: 'row', alignItems: 'center', marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: '#E2E8F0' },
-    miniStatItem: { flex: 1, alignItems: 'center' },
-    miniStatLabel: { 
-        fontSize: 10, 
-        color: '#94A3B8', 
-        marginBottom: 2, 
-        fontWeight: 'bold',
-        textTransform: 'uppercase'
-    },
-    miniStatValue: { 
-        fontSize: 13, // ปรับขนาดให้อ่านง่ายในพื้นที่จำกัด
-        color: '#1E293B', 
-        fontWeight: 'bold',
-        textAlign: 'center' 
-    },
-    miniStatDivider: { 
-        width: 1, 
-        height: 25, 
-        backgroundColor: '#E2E8F0',
-        marginHorizontal: 10
-    },
-
     // SOS Area (Updated)
     mainInteractiveArea: { 
         flex: 1, 
         alignItems: 'center', 
         justifyContent: 'center', 
-        marginVertical: 10, // ✅ ลดจาก 30 เหลือ 10 เพื่อดึงพื้นที่คืน
+        marginVertical: 10, 
     },
     headerTextContainer: { alignItems: 'center', marginBottom: 20 },
     title: { fontSize: 32, fontWeight: '900', color: '#1E293B' },
@@ -1731,14 +1746,6 @@ const styles = StyleSheet.create({
     checkText: { fontSize: 13, color: '#475569', fontWeight: '500' },
     cancelButton: { marginTop: 20, alignItems: 'center', justifyContent: 'center', paddingVertical: 12, paddingHorizontal: 24, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 30, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 2, elevation: 1 },
     cancelButtonText: { color: '#64748B', fontSize: 14, fontWeight: '600' },
-
-    // Terms Styles
-    termsContainer: { flex: 1, backgroundColor: 'white' },
-    termsHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingBottom: 20, paddingTop: Platform.OS === 'ios' ? 60 : 20, borderBottomWidth: 1, borderBottomColor: '#F1F5F9', backgroundColor: 'white', zIndex: 10 },
-    termsTitle: { fontSize: 18, fontWeight: 'bold', color: '#1E293B' },
-    termsContent: { padding: 20 },
-    termsHeading: { fontSize: 16, fontWeight: 'bold', color: '#1E293B', marginTop: 15, marginBottom: 8 },
-    termsText: { fontSize: 14, color: '#64748B', lineHeight: 22, textAlign: 'justify' },
     headerBackButton: { padding: 10, backgroundColor: '#F1F5F9', borderRadius: 14, zIndex: 20 },
 
     // Modal Styles | Settings Modal
@@ -1754,13 +1761,13 @@ const styles = StyleSheet.create({
     menuGroupTitle: { fontSize: 12, fontWeight: 'bold', color: '#94A3B8', marginBottom: 10, marginLeft: 5, textTransform: 'uppercase' },
     menuIconBox: { width: 36, height: 36, borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginRight: 15 },
     // [UPDATED] MenuItem as Card
-    lineMenuItem: { // เปลี่ยนชื่อจาก menuItem ให้ตรงกับ Component
+    lineMenuItem: { 
         flexDirection: 'row', 
         alignItems: 'center', 
         padding: 16, 
-        backgroundColor: '#FFFFFF', // พื้นหลังขาว
-        borderRadius: 16, // ขอบมน
-        marginBottom: 10, // เว้นระยะห่างระหว่างรายการ
+        backgroundColor: '#FFFFFF',
+        borderRadius: 16, 
+        marginBottom: 10, 
         borderWidth: 1, 
         borderColor: '#F1F5F9',
         // Shadow Effect
@@ -1770,7 +1777,7 @@ const styles = StyleSheet.create({
         shadowRadius: 4,
         elevation: 2
     },
-    lineMenuIconBox: { // เปลี่ยนชื่อจาก menuIconBox
+    lineMenuIconBox: { 
         width: 38,
         height: 38,
         borderRadius: 12,
@@ -1781,12 +1788,12 @@ const styles = StyleSheet.create({
     lineMenuTextBox: {
         flex: 1,
     },
-    lineMenuText: { // เปลี่ยนชื่อจาก menuItemText
-        fontSize: 15, // ลดขนาดลงนิดนึงให้ดู Modern
+    lineMenuText: { 
+        fontSize: 15, 
         fontWeight: 'bold', 
         color: '#334155' 
     },
-    lineLogoutButton: { // เปลี่ยนชื่อจาก logoutButton
+    lineLogoutButton: { 
         flexDirection: 'row', 
         alignItems: 'center', 
         justifyContent: 'center', 
@@ -1796,17 +1803,17 @@ const styles = StyleSheet.create({
         marginTop: 20, 
         gap: 10 
     },
-    lineLogoutText: { // เปลี่ยนชื่อจาก logoutText
+    lineLogoutText: { 
         fontSize: 15, 
         fontWeight: 'bold', 
         color: '#EF4444' 
     },
-    separator: { // สำหรับเส้นคั่นถ้าต้องการใช้ แต่ในแบบ Card ไม่จำเป็นต้องใช้
+    separator: { 
         height: 1,
         backgroundColor: '#F1F5F9',
-        marginLeft: 64, // เว้นให้พ้นไอคอน
+        marginLeft: 64, 
         marginRight: 10,
-        display: 'none' // ซ่อนไว้เพราะใช้แบบ Card แล้ว
+        display: 'none' 
     },
 
     // Settings Subviews Styles
@@ -1818,14 +1825,13 @@ const styles = StyleSheet.create({
     fontSizeRadio: { width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: '#E2E8F0', justifyContent: 'center', alignItems: 'center' },
     fontSizeRadioActive: { borderColor: '#EF4444' },
     fontSizeRadioDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: 'white' },
-    
 
-    // Input Fields | Settings Subviews password
+    // Password Change Form
     formGroup: { marginBottom: 20 },
     inputLabel: { 
         fontSize: 13, 
         fontWeight: 'bold', 
-        color: '#475569', // ✅ เข้มขึ้น (เดิม #475569 ดีอยู่แล้ว หรือถ้าเดิมเป็น #94A3B8 ให้แก้)
+        color: '#475569',
         marginBottom: 8 
     },
     inputField: { backgroundColor: '#F8FAFC', borderRadius: 12, borderWidth: 1, borderColor: '#E2E8F0', padding: 14, fontSize: 15, color: '#1E293B' },
@@ -1855,70 +1861,23 @@ const styles = StyleSheet.create({
     mapHeader: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 20, paddingBottom: 20, paddingTop: Platform.OS === 'ios' ? 60 : 40, alignItems: 'center', borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
     mapHeaderTitle: { fontSize: 18, fontWeight: 'bold' },
     mapHeaderSub: { fontSize: 12, color: '#94A3B8' },
-    popoverOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.2)' },
-    popoverContainer: { 
-        position: 'absolute', 
-        top: 100,          // 1. เพิ่มค่า top (จาก 65) ให้ลงมาต่ำอีกนิด ไม่ทับ Header เกินไป
-        right: 20, 
-        width: 300, 
-        backgroundColor: 'white', 
-        borderRadius: 16, 
-        zIndex: 9999,
-        // เพิ่มเงาให้ชัดขึ้น
-        shadowColor: "#000",
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.15,
-        shadowRadius: 12,
-        elevation: 10,
-    },
-
-    popoverArrow: { 
-        position: 'absolute', 
-        top: -10, 
-        
-        // ใส่ค่าที่คุณปรับแล้วว่าตรงเป๊ะๆ (เช่น 110 หรือ 112)
-        right: 50, 
-        
-        width: 20, 
-        height: 20, 
-        
-        // ✅ เปลี่ยนกลับเป็นสีขาว
-        backgroundColor: 'white', 
-        
-        transform: [{ rotate: '45deg' }], 
-        zIndex: 1,
-        
-        // (เสริม) ใส่เงาเล็กน้อยเพื่อให้กลืนกับกล่องหลัก (ถ้าต้องการ)
-        shadowColor: "#000",
-        shadowOffset: { width: -2, height: -2 }, // เงาขึ้นด้านบนซ้าย
-        shadowOpacity: 0.05,
-        shadowRadius: 2,
-    },
-    popoverHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
-    popoverTitle: { fontSize: 16, fontWeight: 'bold', color: '#1E293B' },
-    popoverCloseText: { fontSize: 14, color: '#64748B' },
-    popoverItem: { flexDirection: 'row', padding: 16, borderBottomWidth: 1, borderBottomColor: '#F8FAFC' },
-    popoverIconBox: { width: 40, height: 40, borderRadius: 10, justifyContent: 'center', alignItems: 'center', marginRight: 12 },
-    popoverItemTitle: { fontSize: 14, fontWeight: 'bold', color: '#1E293B' },
-    popoverItemDesc: { fontSize: 12, color: '#64748B', marginTop: 2 },
-    popoverItemTime: { fontSize: 10, color: '#94A3B8', marginTop: 4 },
     loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#FFFFFF' },
     loadingIconContainer: { marginBottom: 30, shadowColor: '#EF4444', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.2, shadowRadius: 20, elevation: 10 },
     loadingTitle: { fontSize: 24, fontWeight: '900', color: '#1E293B', letterSpacing: 1 },
-
-    // --- [เพิ่ม Styles ใหม่] ---
+    loadingText: { marginTop: 8, color: '#94A3B8', fontSize: 14, fontWeight: '500' },
+    
     detailModalOverlay: {
         flex: 1,
-        backgroundColor: 'rgba(0,0,0,0.5)', // พื้นหลังสีดำจางๆ
-        justifyContent: 'center',          // จัดกึ่งกลางแนวตั้ง
-        alignItems: 'center',              // จัดกึ่งกลางแนวนอน
+        backgroundColor: 'rgba(0,0,0,0.5)', 
+        justifyContent: 'center',          
+        alignItems: 'center',             
         padding: 20,
     },
     detailModalContainer: {
         width: '100%',
-        maxWidth: 340,                     // ความกว้างสูงสุดของกล่อง
+        maxWidth: 340,                    
         backgroundColor: 'white',
-        borderRadius: 24,                  // ขอบมน
+        borderRadius: 24,                  
         padding: 24,
         shadowColor: "#000",
         shadowOffset: { width: 0, height: 10 },
@@ -1928,7 +1887,7 @@ const styles = StyleSheet.create({
     },
     detailModalHeader: {
         flexDirection: 'row',
-        justifyContent: 'space-between',   // ไอคอนซ้าย ปุ่มปิดขวา
+        justifyContent: 'space-between',   
         alignItems: 'flex-start',
         marginBottom: 15,
     },
@@ -1957,17 +1916,17 @@ const styles = StyleSheet.create({
     },
     detailDivider: {
         height: 1,
-        backgroundColor: '#F1F5F9',        // เส้นคั่นสีเทาอ่อน
+        backgroundColor: '#F1F5F9',        
         marginBottom: 15,
     },
     detailBody: {
         fontSize: 15,
         color: '#334155',
-        lineHeight: 24,                    // ระยะห่างบรรทัดให้อ่านสบายตา
+        lineHeight: 24,                    
     },
     detailOkButton: {
         marginTop: 25,
-        backgroundColor: '#F1F5F9',        // ปุ่มสีเทาอ่อน
+        backgroundColor: '#F1F5F9',        
         paddingVertical: 12,
         borderRadius: 12,
         alignItems: 'center',
@@ -1983,8 +1942,6 @@ const styles = StyleSheet.create({
     padding: 16,
     borderWidth: 1,
     borderColor: '#E2E8F0',
-    // ห้ามใส่ height เด็ดขาด!
-    // ห้ามใส่ flex: 1 เด็ดขาด!
 },
 privacySectionTitle: {
     fontWeight: 'bold',
@@ -1999,42 +1956,3 @@ privacyBody: {
 });
 
 export default HomeScreen;
-
-//สิ่งที่ปรับปรุงในเวอร์ชันนี้:
-// 1. Dynamic ETA Logic: คำนวณเวลาเริ่มต้นของตัวนับถอยหลังโดยอ้างอิงจากระยะทาง (สมมติความเร็วเฉลี่ยรถพยาบาลที่ 60 กม./ชม. รวมเวลาเตรียมตัวออกเหตุ)
-
-// 2. Minimum Response Time: กำหนดเวลาขั้นต่ำไว้ที่ 3 นาที (180 วินาที) เพราะแม้ระยะทางจะใกล้มาก แต่ทีมกู้ชีพต้องใช้เวลาในการเตรียมอุปกรณ์และเคลื่อนที่
-
-// 3. Real-time Tracking: ยืนยันการทำงานของระบบ Watcher ที่จะอัปเดตพิกัดทุกๆ การเคลื่อนที่ (กำหนดไว้ที่ 5-10 เมตร)
-
-// 4. Live Indicator: เพิ่มสัญลักษณ์จุดสีเขียวกระพริบหน้า "ตำแหน่งปัจจุบัน" เพื่อบอกสถานะว่า GPS กำลังทำงานแบบเรียลไทม์
-
-// 5. Dynamic Distance & ETA: ระยะทางและเวลาเดินทางจะถูกคำนวณใหม่โดยอัตโนมัติทันทีที่ผู้ป่วยขยับตัวครับ
-
-// 6. Enhanced Error Handling: ปรับปรุงการจัดการข้อผิดพลาดในการดึงพิกัดและแสดงข้อความที่ชัดเจนยิ่งขึ้น
-
-// 7. เพิ่ม การเปลี่ยนรหัสผ่าน (Change Password) ในหน้าตั้งค่า 
-
-// 8. เพิ่ม ข้อกำหนดการใช้บริการ (Terms of Service) ในหน้าตั้งค่า
-
-// 9. เพิ่ม นโยบายความเป็นส่วนตัว (Privacy Policy) ในหน้าตั้งค่า
-
-// 10. การทำให้แผนที่ใน Modal ขยับตามพิกัดผู้ใช้แบบอัตโนมัติ (Live Map Camera) และ ปรับมุมกล้องให้เห็นทั้ง "เรา" และ "รพ." พร้อมกัน เพื่อให้เห็นระยะห่างจริง
-
-// 11. เพิ่มปุ่ม ยอมรับนโยบายความเป็นส่วนตัว (Accept Privacy Policy) ในหน้าลงชื่อเข้าใช้
-
-// 12. มีการเข้าสู่ระบบจากอุปกรณ์อื่น ๆ จะแจ้งเตือนผู้ใช้ในแอปทันที และบังคับให้ลงชื่อออก (Logout) เพื่อความปลอดภัยของบัญชีผู้ใช้
-
-// 13. เพิ่ม biometric authentication (ลายนิ้วมือ/Face ID) ในการเข้าดูข้อมูลส่วนตัวเพื่อความปลอดภัยยิ่งขึ้น
-
-// 14. เปลี่ยนขนาดตัวอักษรในแอปเป็นแบบไดนามิกตามที่ผู้ใช้เลือกในหน้าตั้งค่า (ขนาดเล็ก, ปกติ, ใหญ่)
-
-// 15. UI/UX Improvements: ปรับปรุงดีไซน์บางส่วนให้ใช้งานง่ายและดูทันสมัยยิ่งขึ้น
-
-// 16. ระบบแจ้งเตือน (Push Notifications): เพิ่มระบบแจ้งเตือนแบบพุชเพื่อแจ้งเตือนเหตุฉุกเฉินใหม่ ๆ หรือการอัปเดตสถานะการช่วยเหลือผู้ป่วย 
-
-// 17. เพิ่มปุ่ม "โทรด่วน" (Direct Call) ในหน้าหลัก เพื่อให้ผู้ใช้สามารถโทรหาสายด่วนได้ทันทีในกรณีฉุกเฉิน
-
-// 18. เพิ่มข้อความแจ้งเตือนเมื่ออุปกรณ์อยู่ในสถานะออฟไลน์ (Offline Warning) เพื่อเตือนให้ผู้ใช้ตรวจสอบการเชื่อมต่ออินเทอร์เน็ต
-
-// 19. เพิ่มหน้าการแจ้งเตือน (Notifications) เพื่อให้ผู้ใช้สามารถดูประวัติการแจ้งเตือนทั้งหมดได้

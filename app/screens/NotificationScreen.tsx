@@ -7,7 +7,6 @@ import {
   Modal, 
   ScrollView, 
   StatusBar,
-  Animated,
   DeviceEventEmitter,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';

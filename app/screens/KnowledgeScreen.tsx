@@ -1,6 +1,7 @@
 import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Linking, Image } from 'react-native';
-import { HeartPulse, AlertTriangle, ShieldCheck, Phone, Activity } from 'lucide-react-native';
+import { View, StyleSheet, ScrollView, TouchableOpacity, Linking, Image } from 'react-native';
+import { AlertTriangle, ShieldCheck, Phone, Activity } from 'lucide-react-native';
+import { AppText } from '../components/AppText';
 
 const KnowledgeScreen = () => {
 
@@ -20,18 +21,18 @@ const KnowledgeScreen = () => {
                     style={styles.headerImage} 
                 />
                 <View style={styles.headerOverlay} />
-                <Text style={styles.headerTitle}>รู้จักโรค ACS{"\n"}(กล้ามเนื้อหัวใจขาดเลือด)</Text>
+                <AppText style={styles.headerTitle}>รู้จักโรค ACS{"\n"}(กล้ามเนื้อหัวใจขาดเลือด)</AppText>
             </View>
-
+            
             {/* ส่วนที่ 1: อาการที่ต้องระวัง */}
             <View style={styles.card}>
                 <View style={styles.cardHeader}>
                     <AlertTriangle color="#FF9800" size={24} />
-                    <Text style={styles.cardTitle}>สัญญาณเตือนอันตราย!</Text>
+                    <AppText style={styles.cardTitle}>สัญญาณเตือนอันตราย!</AppText>
                 </View>
-                <Text style={styles.description}>
+                <AppText style={styles.description}>
                     หากมีอาการเหล่านี้ "เฉียบพลัน" ควรรีบไปโรงพยาบาล หรือโทร 1669 ทันที
-                </Text>
+                </AppText>
                 <View style={styles.listContainer}>
                     <ListItem text="เจ็บแน่นหน้าอก เหมือนมีของหนักทับ" />
                     <ListItem text="ปวดร้าวไปที่ ไหล่ซ้าย, กราม หรือหลัง" />
@@ -43,23 +44,23 @@ const KnowledgeScreen = () => {
 
             {/* ส่วนที่ 2: ปุ่มฉุกเฉิน */}
             <View style={[styles.card, styles.emergencyCard]}>
-                <Text style={styles.emergencyText}>พบผู้ป่วยหรือมีอาการฉุกเฉิน?</Text>
+                <AppText style={styles.emergencyAppText}>พบผู้ป่วยหรือมีอาการฉุกเฉิน?</AppText>
                 <TouchableOpacity style={styles.callButton} onPress={handleCallEmergency}>
                     <Phone color="white" size={24} style={{ marginRight: 10 }} />
-                    <Text style={styles.callButtonText}>โทร 1669 ทันที</Text>
+                    <AppText style={styles.callButtonAppText}>โทร 1669 ทันที</AppText>
                 </TouchableOpacity>
-                <Text style={styles.subText}>ให้บริการฟรี ตลอด 24 ชั่วโมง</Text>
+                <AppText style={styles.subAppText}>ให้บริการฟรี ตลอด 24 ชั่วโมง</AppText>
             </View>
 
             {/* ส่วนที่ 3: การปฏิบัติตัวและป้องกัน */}
             <View style={styles.card}>
                 <View style={styles.cardHeader}>
                     <ShieldCheck color="#4CAF50" size={24} />
-                    <Text style={styles.cardTitle}>การป้องกันและดูแลตัวเอง</Text>
+                    <AppText style={styles.cardTitle}>การป้องกันและดูแลตัวเอง</AppText>
                 </View>
-                <Text style={styles.description}>
+                <AppText style={styles.description}>
                     ปรับเปลี่ยนพฤติกรรมเพื่อลดความเสี่ยงการเกิดโรคซ้ำ
-                </Text>
+                </AppText>
                 <View style={styles.listContainer}>
                     <PreventionItem 
                         title="งดสูบบุหรี่" 
@@ -83,7 +84,7 @@ const KnowledgeScreen = () => {
             {/* Footer */}
             <View style={styles.footer}>
                 <Activity color="#ccc" size={20} />
-                <Text style={styles.footerText}>ด้วยความปรารถนาดีจาก รพ.ค่ายกฤษณ์สีวะรา</Text>
+                <AppText style={styles.footerAppText}>ด้วยความปรารถนาดีจาก รพ.ค่ายกฤษณ์สีวะรา</AppText>
             </View>
 
         </ScrollView>
@@ -94,15 +95,15 @@ const KnowledgeScreen = () => {
 const ListItem = ({ text }: { text: string }) => (
     <View style={styles.row}>
         <View style={styles.bullet} />
-        <Text style={styles.itemText}>{text}</Text>
+        <AppText style={styles.itemAppText}>{text}</AppText>
     </View>
 );
 
 // Component ย่อยสำหรับ List การป้องกัน
 const PreventionItem = ({ title, desc }: { title: string, desc: string }) => (
     <View style={styles.preventionContainer}>
-        <Text style={styles.preventionTitle}>• {title}</Text>
-        <Text style={styles.preventionDesc}>{desc}</Text>
+        <AppText style={styles.preventionTitle}>• {title}</AppText>
+        <AppText style={styles.preventionDesc}>{desc}</AppText>
     </View>
 );
 
@@ -179,7 +180,7 @@ const styles = StyleSheet.create({
         marginTop: 8,
         marginRight: 10,
     },
-    itemText: {
+    itemAppText: {
         fontSize: 15,
         color: '#444',
         flex: 1,
@@ -192,7 +193,7 @@ const styles = StyleSheet.create({
         borderWidth: 1,
         borderColor: '#FFCDD2',
     },
-    emergencyText: {
+    emergencyAppText: {
         fontSize: 16,
         fontWeight: '600',
         color: '#D32F2F',
@@ -211,12 +212,12 @@ const styles = StyleSheet.create({
         shadowRadius: 5,
         elevation: 5,
     },
-    callButtonText: {
+    callButtonAppText: {
         color: 'white',
         fontSize: 18,
         fontWeight: 'bold',
     },
-    subText: {
+    subAppText: {
         marginTop: 8,
         fontSize: 12,
         color: '#D32F2F',
@@ -246,7 +247,7 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         gap: 8,
     },
-    footerText: {
+    footerAppText: {
         color: '#999',
         fontSize: 12,
     }

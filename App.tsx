@@ -47,24 +47,31 @@ function AppTabs() {
                 // ซ่อน Title ตรง Header แต่เก็บปุ่ม Logout ไว้
                 headerTitle: '',
                 tabBarActiveTintColor: '#EF4444', // สีแดงเมื่อเลือก
-    tabBarInactiveTintColor: '#94A3B8', // สีเทาเมื่อไม่ได้เลือก
-    tabBarStyle: {
-      backgroundColor: '#FFFFFF', // พื้นหลังขาว
-      borderTopWidth: 0, // ลบเส้นขอบด้านบนออก (ช่วยให้รอยต่อที่คุณวงหายไป)
-      elevation: 10, // เงาสำหรับ Android
-      shadowColor: '#000', // เงาสำหรับ iOS
-      shadowOffset: { width: 0, height: -4 },
-      shadowOpacity: 0.05,
-      shadowRadius: 10,
-      height: Platform.OS === 'ios' ? 88 : 65, // ปรับความสูงให้เหมาะกับแต่ละระบบ
-      paddingBottom: Platform.OS === 'ios' ? 30 : 10, // จัดระยะตัวอักษรไม่ให้จม
-      paddingTop: 10,
-    },
-    tabBarLabelStyle: {
-      fontSize: 12,
-      fontWeight: '600',
-      marginBottom: 5,
-    }
+                tabBarInactiveTintColor: '#94A3B8', // สีเทาเมื่อไม่ได้เลือก
+                tabBarStyle: {
+                backgroundColor: '#FFFFFF',
+                borderTopWidth: 0,
+                elevation: 10,
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: -4 },
+                shadowOpacity: 0.05,
+                shadowRadius: 10,
+                
+                // ✅ ปรับความสูง: Android ควรอยู่ที่ประมาณ 60-70 หากไม่มีปุ่มระบบ 
+                // แต่ถ้ามีปัญหาจม ให้เพิ่มความสูงขึ้นเล็กน้อย
+                height: Platform.OS === 'ios' ? 88 : 70, 
+
+                // ✅ จุดสำคัญ: ปรับ paddingBottom ของ Android
+                // หาก Android มีปัญหาจม ให้ใส่ค่าประมาณ 10-15 เพื่อดันไอคอนและข้อความขึ้นมา
+                paddingBottom: Platform.OS === 'ios' ? 30 : 12, 
+                
+                paddingTop: 10,
+                },
+                tabBarLabelStyle: {
+                fontSize: 12,
+                fontWeight: '600',
+                marginBottom: 5,
+                }
             })} 
         >
             <Tab.Screen 
@@ -154,5 +161,5 @@ const styles = StyleSheet.create({
     loadingIconContainer: { marginBottom: 30, shadowColor: '#EF4444', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.2, shadowRadius: 20, elevation: 10 },
     loadingTitle: { fontSize: 24, fontWeight: '900', color: '#1E293B', letterSpacing: 1 },
     loadingText: { marginTop: 8, color: '#94A3B8', fontSize: 14, fontWeight: '500' }
-
+    
 });
