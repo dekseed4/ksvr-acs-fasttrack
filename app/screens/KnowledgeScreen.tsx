@@ -1,7 +1,8 @@
 import React from 'react';
-import { View, StyleSheet, ScrollView, TouchableOpacity, Linking, Image } from 'react-native';
+import { View, StyleSheet, ScrollView, TouchableOpacity, Linking } from 'react-native';
 import { AlertTriangle, ShieldCheck, Phone, Activity } from 'lucide-react-native';
 import { AppText } from '../components/AppText';
+import { Image } from 'expo-image';
 
 const KnowledgeScreen = () => {
 
@@ -17,6 +18,7 @@ const KnowledgeScreen = () => {
             <View style={styles.headerContainer}>
                 {/* คุณสามารถเปลี่ยน uri เป็นรูปจาก Project ของคุณเองได้ */}
                 <Image 
+                    cachePolicy="disk" 
                     source={{ uri: 'https://img.freepik.com/free-vector/human-heart-concept-illustration_114360-8354.jpg' }} 
                     style={styles.headerImage} 
                 />

@@ -18,6 +18,7 @@ interface AuthProps {
     onLogin?: (phoneNumber: string, password: string) => Promise<any>;
     onLogout?: () => Promise<any>;
     setUserData?: (data: UserProfile) => void;
+    updateUser: (newUserData: any) => void;
     isLoading?: boolean;
 }
 
@@ -143,6 +144,16 @@ useEffect(() => {
         loadToken();
     }, []);
 
+    const updateUser = (newUserData: any) => {
+        setAuthState((prevState) => ({
+            ...prevState,
+            user: prevState.user ? {
+                ...prevState.user,
+                ...newUserData, // นำข้อมูลใหม่ (เช่น detail_genaral) ไปทับข้อมูลเดิมเฉพาะส่วน
+            } : null,
+        }));
+    };
+
     const login = async (phoneNumber, password) => {
         try {
             const result = await axios.post(`${API_URL}/login`, { phoneNumber, password });
@@ -211,6 +222,7 @@ useEffect(() => {
         onLogin: login,
         onLogout: logout,
         setUserData: setUserData,
+        updateUser: updateUser,
         isLoading
     };
 

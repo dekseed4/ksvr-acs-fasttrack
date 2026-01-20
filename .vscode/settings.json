@@ -1,0 +1,25 @@
+{
+  "intelephense.files.exclude": [
+    "**/.git/**",
+    "**/.svn/**",
+    "**/.hg/**",
+    "**/CVS/**",
+    "**/.DS_Store/**",
+    "**/node_modules/**",
+    "**/vendor/**",
+    "**/storage/framework/cache/**",
+    "**/storage/logs/**",
+    "**/.expo/**",
+    "**/web-build/**"
+  ],
+  "search.exclude": {
+    "**/node_modules": true,
+    "**/vendor": true,
+    "**/.expo": true
+  },
+  "files.watcherExclude": {
+    "**/node_modules/*/**": true,
+    "**/vendor/*/**": true,
+    "**/.expo/*/**": true
+  }
+}

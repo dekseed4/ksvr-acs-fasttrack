@@ -13,7 +13,6 @@ import {
   ActivityIndicator,
   Alert,
   Linking,
-  Image,
 } from 'react-native';
 
 import { 
@@ -28,7 +27,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
 import { useNavigation } from '@react-navigation/native';
-
+import { Image } from 'expo-image';
 const { width } = Dimensions.get('window');
 
 const LoginScreen = () => {

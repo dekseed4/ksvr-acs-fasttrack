@@ -4,8 +4,10 @@ import {
   StyleSheet,
   TouchableOpacity,
   ScrollView,
-  Image,
   StatusBar,
+  TextInput,
+  ActivityIndicator,
+  Modal,
 } from 'react-native';
 import {
   User,
@@ -14,16 +16,62 @@ import {
   ChevronLeft
 } from 'lucide-react-native';
 
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { Image } from 'expo-image';
 
+import { SafeAreaView } from 'react-native-safe-area-context';
+import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
 import { AppText } from '../components/AppText'; 
+import { API_URL } from '../config';
 
 const ProfileScreen = ({ navigation }) => {
-  const { authState } = useAuth();
+  const { authState, updateUser } = useAuth();
   const user = authState?.user;
   
   const [imageLoadError, setImageLoadError] = useState(false);
+
+  const [newPhone, setNewPhone] = useState(user?.detail_genaral?.phonenumber || '');
+  const [isUpdating, setIsUpdating] = useState(false);
+
+  const [isModalVisible, setIsModalVisible] = useState(false);
+
+  // ฟังก์ชันอัปเดตเบอร์โทรศัพท์
+  const handleUpdatePhone = async () => {
+      if (newPhone.length !== 10) {
+          alert("กรุณากรอกเบอร์โทรศัพท์ให้ครบ 10 หลัก");
+          return;
+      }
+
+      setIsUpdating(true);
+      try {
+          const response = await axios.post(`${API_URL}/update-phone-number`, 
+              { phonenumber: newPhone }, 
+              {
+                  headers: {
+                      Authorization: `Bearer ${authState.token}`, // ✅ ส่ง Token ไปด้วย
+                  }
+              }
+          );
+
+          if (response.status === 200) {
+              updateUser({
+                  detail_genaral: {
+                      ...authState.user.detail_genaral,
+                      phonenumber: newPhone
+                  }
+              });
+              alert("อัปเดตสำเร็จ");
+              setIsModalVisible(false);
+              // อย่าลืมอัปเดตข้อมูลใน AuthContext ของคุณเพื่อให้ UI เปลี่ยนตามด้วยครับ
+          }
+      } catch (error) {
+          console.error(error);
+          const msg = error.response?.data?.message || "เกิดข้อผิดพลาดในการเชื่อมต่อ";  
+          alert(msg);
+      } finally {
+          setIsUpdating(false);
+      }
+  };
 
   // Helper: แปลง array ของโรคเป็น string
   const getCongenitalDiseases = () => {
@@ -62,7 +110,7 @@ const ProfileScreen = ({ navigation }) => {
                  user?.detail_genaral?.picture_profile !== 'default.jpg' &&
                  !imageLoadError ? (
                   <Image 
-                    source={{ uri: `https://ksvrhospital.go.th/krit-siwara_smart_heart/files/avatars/${user.detail_genaral?.picture_profile}` }}
+                    source={{ uri: `${API_URL}/files/avatars/${user.detail_genaral?.picture_profile}` }}
                     style={{ width: '100%', height: '100%', borderRadius: 30 }}
                     resizeMode="cover"
                     onError={() => setImageLoadError(true)}
@@ -122,9 +170,25 @@ const ProfileScreen = ({ navigation }) => {
               </View>
 
               <View style={styles.infoRowSimple}>
+                <View style={{ flex: 1 }}>
                 <AppText style={styles.infoLabelSimple}>เบอร์โทรศัพท์</AppText>
-                <AppText style={styles.infoValueSimple}>{user?.detail_genaral?.phonenumber || '-'}</AppText>
               </View>
+
+              {/* ฝั่งขวา: ส่วนแสดงผล หรือ ส่วนแก้ไข */}
+              <View style={styles.infoRowSimple}>
+                <AppText style={styles.infoLabelSimple}>เบอร์โทรศัพท์</AppText>
+                <TouchableOpacity 
+                  style={{ flexDirection: 'row', alignItems: 'center', flex: 1.5, justifyContent: 'flex-end' }}
+                  onPress={() => {
+                    setNewPhone(user?.detail_genaral?.phonenumber || '');
+                    setIsModalVisible(true);
+                  }}
+                >
+                  <AppText style={styles.infoValueSimple}>{user?.detail_genaral?.phonenumber || '-'}</AppText>
+                  <AppText style={{ fontSize: 10, color: '#3B82F6', marginLeft: 6 }}>(แก้ไข)</AppText>
+                </TouchableOpacity>
+              </View>
+            </View>
               
               <View style={styles.infoRowSimple}>
                 <AppText style={styles.infoLabelSimple}>ที่อยู่</AppText>
@@ -176,6 +240,51 @@ const ProfileScreen = ({ navigation }) => {
           </View>
         </View>
       </ScrollView>
+      {/* Pop-up สำหรับแก้ไขเบอร์โทรศัพท์ */}
+      <Modal
+        visible={isModalVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setIsModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <AppText style={styles.modalTitle}>แก้ไขเบอร์โทรศัพท์</AppText>
+            <AppText style={styles.modalSubtitle}>กรุณาระบุเบอร์โทรศัพท์ 10 หลักที่ติดต่อได้</AppText>
+            
+            <TextInput
+              style={styles.modalInput}
+              value={newPhone}
+              onChangeText={setNewPhone}
+              keyboardType="phone-pad"
+              maxLength={10}
+              autoFocus={true}
+              placeholder="0XXXXXXXXX"
+            />
+
+            <View style={styles.modalButtonContainer}>
+              <TouchableOpacity 
+                style={[styles.modalButton, styles.cancelButton]} 
+                onPress={() => setIsModalVisible(false)}
+              >
+                <AppText style={{ color: '#64748B', fontWeight: 'bold' }}>ยกเลิก</AppText>
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                style={[styles.modalButton, styles.saveButton]} 
+                onPress={handleUpdatePhone}
+                disabled={isUpdating}
+              >
+                {isUpdating ? (
+                  <ActivityIndicator color="white" size="small" />
+                ) : (
+                  <AppText style={{ color: 'white', fontWeight: 'bold' }}>บันทึกข้อมูล</AppText>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -217,6 +326,50 @@ const styles = StyleSheet.create({
   infoRowSimple: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12, borderBottomWidth: 1, borderBottomColor: '#E2E8F0', paddingBottom: 8 },
   infoLabelSimple: { fontSize: 13, color: '#64748B', flex: 1 },
   infoValueSimple: { fontSize: 13, fontWeight: '600', color: '#1E293B', flex: 1.5, textAlign: 'right' },
+  
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20
+  },
+  modalContent: {
+    width: '100%',
+    backgroundColor: 'white',
+    borderRadius: 20,
+    padding: 25,
+    alignItems: 'center',
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+  },
+  modalTitle: { fontSize: 18, fontWeight: 'bold', color: '#1E293B', marginBottom: 10 },
+  modalSubtitle: { fontSize: 14, color: '#64748B', marginBottom: 20, textAlign: 'center' },
+  modalInput: {
+    width: '100%',
+    backgroundColor: '#F1F5F9',
+    borderRadius: 12,
+    padding: 15,
+    fontSize: 18,
+    textAlign: 'center',
+    color: '#1E293B',
+    marginBottom: 20,
+    fontWeight: 'bold',
+    letterSpacing: 2
+  },
+  modalButtonContainer: { flexDirection: 'row', gap: 12 },
+  modalButton: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  cancelButton: { backgroundColor: '#F1F5F9' },
+  saveButton: { backgroundColor: '#3B82F6' },
 });
 
 export default ProfileScreen;

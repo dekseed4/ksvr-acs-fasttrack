@@ -3,7 +3,6 @@ import {
   View, 
   StyleSheet, 
   TouchableOpacity, 
-  FlatList, 
   Modal, 
   ScrollView, 
   StatusBar,
@@ -13,6 +12,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { ChevronLeft, X, AlertTriangle, Calendar, FileHeart } from 'lucide-react-native';
 import { AppText } from '../components/AppText'; 
+import { FlashList } from "@shopify/flash-list";
 import * as Notifications from 'expo-notifications'; // ✅ 1. Import เพิ่ม
 
 // Helper เลือกไอคอน
@@ -157,10 +157,11 @@ const NotificationScreen = () => {
                 <View style={{ width: 28 }} /> 
             </View>
 
-            <FlatList
+            <FlashList
                 data={notificationList}
-                keyExtractor={(item: any) => item.id.toString()}
                 renderItem={renderItem}
+                estimatedItemSize={80} // ระบุความสูงคร่าวๆ ของแต่ละรายการ ช่วยให้คำนวณเร็วขึ้น
+                keyExtractor={(item: any) => item.id.toString()}
                 contentContainerStyle={{ padding: 16 }}
                 ListEmptyComponent={
                     <View style={styles.emptyContainer}>

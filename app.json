@@ -13,6 +13,9 @@
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "jsEngine": "hermes",
+    "experiments": {
+      "typedRoutes": true
+    },
     "ios": {
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "แอปพลิเคชันต้องการเข้าถึงตำแหน่งพิกัดขณะใช้งาน เพื่อให้ทีมแพทย์สามารถส่งรถพยาบาลไปช่วยเหลือคุณได้อย่างแม่นยำในกรณีเกิดเหตุฉุกเฉิน",

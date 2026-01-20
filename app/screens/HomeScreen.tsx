@@ -13,7 +13,6 @@ import {
   Linking, 
   Modal,
   StatusBar,
-  Image,
   Alert,
   TextInput,
   AppState,
@@ -75,30 +74,11 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { API_URL } from '../config';
-
+import { Image } from 'expo-image';
 const { width, height } = Dimensions.get('window'); 
 
 import { HOSPITAL_COORDS } from '../config';
-
-// --- Component ปุ่มเมนูสไตล์ LINE (วางไว้นอก HomeScreen) ---
-const LineMenuItem = ({ icon: Icon, color, label, onPress, isDestructive = false, fontScale = 1 }) => (
-  <TouchableOpacity
-    style={styles.lineMenuItem}
-    onPress={onPress}
-    activeOpacity={0.7}
-  >
-    <View style={[styles.lineMenuIconBox, { backgroundColor: isDestructive ? '#FEF2F2' : '#F1F5F9' }]}>
-      <Icon size={20 * fontScale} color={isDestructive ? '#EF4444' : (color || '#64748B')} />
-    </View>
-    <View style={styles.lineMenuTextBox}>
-      {/* นำ fontScale มาคูณที่นี่ */}
-      <Text style={[styles.lineMenuText, isDestructive && { color: '#EF4444' }, { fontSize: 15 * fontScale }]}>
-        {label}
-      </Text>
-    </View>
-    {!isDestructive && <ChevronRight size={18 * fontScale} color="#CBD5E1" />}
-  </TouchableOpacity>
-);
+import SettingsMenu from '../components/SettingsMenu';
 
 const HomeScreen = () => {
 
@@ -1074,278 +1054,6 @@ const HomeScreen = () => {
                     </>
         );
        
-    // SettingsNavigation
-    const SettingsNavigation = ({ 
-        currentView, 
-        onChangeView, 
-        onClose, 
-        user, 
-        authenticateUser, 
-        navigation, 
-        onLogout, 
-        fontScale = 1,
-        changeFontScale,
-        renderPasswordForm
-    }) => {
-        
-            // Animation Config
-            const isMain = currentView === 'main';
-            const mainEntering = SlideInLeft.duration(350);
-            const mainExiting = SlideOutLeft.duration(350);
-            const subEntering = SlideInRight.duration(350);
-            const subExiting = SlideOutRight.duration(350);
-
-            // กำหนดความสูง Header เพื่อใช้คำนวณ Padding
-            const HEADER_HEIGHT = 80;
-
-            // --- Header Component (ใช้ Absolute Position) ---
-            const Header = ({ title, showBack }) => (
-                <View style={{
-                    position: 'absolute', // ✅ ตรึงตำแหน่ง
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    height: HEADER_HEIGHT,
-                    zIndex: 999,          // ✅ ลอยอยู่ชั้นบนสุด
-                    backgroundColor: 'white', 
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    paddingHorizontal: 20,
-                    paddingVertical: 15,
-                    borderBottomWidth: 1,
-                    borderBottomColor: '#F1F5F9',
-                }}>
-                    <View style={{ width: 40, alignItems: 'flex-start' }}>
-                        {showBack && (
-                            <TouchableOpacity onPress={() => onChangeView('main')} style={styles.headerBackButton} hitSlop={{top:15, bottom:15, left:15, right:15}}>
-                                <ChevronLeft size={24 * fontScale} color="#1E293B" />
-                            </TouchableOpacity>
-                        )}
-                    </View>
-                    <View style={{ flex: 1, alignItems: 'center' }}>
-                        <AppText style={[styles.modalTitle, { fontSize: 20 * fontScale }]}>{title}</AppText>
-                    </View>
-                    <View style={{ width: 40, alignItems: 'flex-end' }}>
-                        <TouchableOpacity onPress={onClose} style={styles.modalCloseIcon} hitSlop={{top:15, bottom:15, left:15, right:15}}>
-                            <X size={24 * fontScale} color="#94A3B8" />
-                        </TouchableOpacity>
-                    </View>
-                </View>
-            );
-
-            // 1. หน้าหลัก (Main Menu)
-            if (currentView === 'main') {
-                return (
-                    <Animated.View key="main" entering={mainEntering} exiting={mainExiting} style={{ flex: 1, position: 'relative' }}>
-                        {/* ScrollView อยู่ด้านหลัง */}
-                        <BottomSheetScrollView 
-                            contentContainerStyle={{ 
-                                paddingHorizontal: 20, 
-                                paddingTop: HEADER_HEIGHT + 10, 
-                                paddingBottom: 30, // เผื่อพื้นที่ให้ปุ่ม Logout ด้านล่าง
-                                flexGrow: 1
-                            }}
-                        >
-                            <AppText style={[styles.menuGroupTitle, { fontSize: 12 * fontScale }]}>บัญชีของฉัน</AppText>
-                            <View style={styles.menuGroupContainer}>
-                                <LineMenuItem fontScale={fontScale} icon={UserCircle} color="#3B82F6" label="ข้อมูลส่วนตัว" onPress={() => authenticateUser(() => { onClose(); navigation.navigate('Profile'); })} />
-                                <View style={styles.separator} />
-                                <LineMenuItem fontScale={fontScale} icon={Key} color="#F59E0B" label="เปลี่ยนรหัสผ่าน" onPress={() => onChangeView('password')} />
-                            </View>
-
-                            <AppText style={[styles.menuGroupTitle, { fontSize: 12 * fontScale }]}>การตั้งค่าแอป</AppText>
-                            <View style={styles.menuGroupContainer}>
-                                <LineMenuItem fontScale={fontScale} icon={Type} color="#8B5CF6" label="ขนาดตัวอักษร" onPress={() => onChangeView('font')} />
-                                <View style={styles.separator} />
-                            </View>
-
-                            <AppText style={[styles.menuGroupTitle, { fontSize: 12 * fontScale }]}>ความช่วยเหลือ</AppText>
-                            <View style={styles.menuGroupContainer}>
-                                <LineMenuItem fontScale={fontScale} icon={PhoneCall} color="#EF4444" label="ติดต่อโรงพยาบาล" onPress={() => onChangeView('contact')} />
-                                <View style={styles.separator} />
-                                <LineMenuItem fontScale={fontScale} icon={FileText} color="#64748B" label="ข้อกำหนดและนโยบายความเป็นส่วนตัว" onPress={() => onChangeView('privacy')} />
-                                <View style={styles.separator} />
-                                <LineMenuItem fontScale={fontScale} icon={InfoIcon} color="#64748B" label="เกี่ยวกับแอป" onPress={() => onChangeView('about')} />
-                            </View>
-
-                            <TouchableOpacity style={[styles.lineLogoutButton, { marginBottom: 40 }]} onPress={() => { onClose(); onLogout(); }}>
-                                <AppText style={[styles.lineLogoutText, { fontSize: 15 * fontScale }]}>ออกจากระบบ</AppText>
-                            </TouchableOpacity>
-                        </BottomSheetScrollView>
-
-                        {/* Header วางทับอยู่ด้านหน้า */}
-                        <Header title="ตั้งค่า" showBack={false} />
-                    </Animated.View>
-                );
-            }
-
-            // 2. หน้าเปลี่ยนรหัสผ่าน
-            if (currentView === 'password') {
-                return (
-                    <Animated.View key="password" entering={subEntering} exiting={subExiting} style={{ flex: 1, position: 'relative' }}>
-                        <BottomSheetScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 150, paddingTop: HEADER_HEIGHT + 20 }}>
-                            {renderPasswordForm()}
-                        </BottomSheetScrollView>
-                        <Header title="เปลี่ยนรหัสผ่าน" showBack={true} />
-                    </Animated.View>
-                );
-            }
-
-            // 3. หน้าขนาดตัวอักษร
-            if (currentView === 'font') {
-                return (
-                    <Animated.View key="font" entering={subEntering} exiting={subExiting} style={{ flex: 1, position: 'relative' }}>
-                        <BottomSheetScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 150, paddingTop: HEADER_HEIGHT + 20, flexGrow: 1 }}>
-                            <View style={{ padding: 20, backgroundColor: '#F8FAFC', borderRadius: 16, marginBottom: 30, alignItems: 'center', minHeight: 120, justifyContent: 'center', borderWidth: 1, borderColor: '#E2E8F0' }}>
-                                <AppText style={{ fontSize: 16 * fontScale }}>ตัวอย่างข้อความ</AppText>
-                                <AppText style={{ fontSize: 14 * fontScale, color: '#64748B', marginTop: 8 }}>ขนาดปัจจุบัน</AppText>
-                            </View>
-                            <View style={{ gap: 12 }}>
-                                {[
-                                    { l: 'เล็ก (16)', s: 1, i: 'A', fs: 16 },
-                                    { l: 'กลาง (20)', s: 1.25, i: 'A', fs: 20, b: true },
-                                    { l: 'ใหญ่ (24)', s: 1.5, i: 'A', fs: 24, b: true, w: '900' }
-                                ].map((opt, idx) => (
-                                    <TouchableOpacity 
-                                        key={idx}
-                                        style={[styles.fontSizeOption, fontScale === opt.s && styles.fontSizeOptionActive]}
-                                        onPress={() => changeFontScale(opt.s)}
-                                    >
-                                        <AppText style={{ fontSize: opt.fs, fontWeight: opt.w || 'normal', color: fontScale === opt.s ? 'white' : '#1E293B' }}>{opt.i}</AppText>
-                                        <AppText style={[styles.fontSizeLabel, { color: fontScale === opt.s ? 'white' : '#1E293B', fontSize: 16 * fontScale }]}>{opt.l}</AppText>
-                                        {fontScale === opt.s && <Check size={20} color="white" />}
-                                    </TouchableOpacity>
-                                ))}
-                            </View>
-                        </BottomSheetScrollView>
-                        <Header title="ขนาดตัวอักษร" showBack={true} />
-                    </Animated.View>
-                );
-            }
-
-            // 4. หน้าติดต่อเรา
-            if (currentView === 'contact') {
-                return (
-                    <Animated.View key="contact" entering={subEntering} exiting={subExiting} style={{ flex: 1, position: 'relative' }}>
-                        <BottomSheetScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 150, paddingTop: HEADER_HEIGHT + 20 }}>
-                            <View style={styles.contactCard}>
-                                <PhoneCall size={32 * fontScale} color="#EF4444" style={{marginBottom: 10}} />
-                                <AppText style={[styles.contactTitle, { fontSize: 18 * fontScale }]}>รพ.ค่ายกฤษณ์สีวะรา</AppText>
-                                <AppText style={[styles.contactSubtitle, { fontSize: 14 * fontScale }]}>แผนกฉุกเฉิน 24 ชั่วโมง</AppText>
-                                <TouchableOpacity style={styles.callButton} onPress={() => Linking.openURL('tel:0647906014')}>
-                                    <AppText style={[styles.callButtonText, { fontSize: 15 * fontScale }]}>โทร 064-7906014</AppText>
-                                </TouchableOpacity>
-                                
-                            </View>
-                        </BottomSheetScrollView>
-                        <Header title="ติดต่อโรงพยาบาล" showBack={true} />
-                    </Animated.View>
-                );
-            }
-
-            // ค้นหาส่วนนี้ใน HomeScreen.tsx แล้วแทนที่ด้วยโค้ดด้านล่างนี้ครับ
-            if (currentView === 'privacy') {
-                return (
-                    <Animated.View key="privacy" entering={subEntering} exiting={subExiting} style={{ flex: 1 }}>
-                        <Header title="นโยบายความเป็นส่วนตัว" showBack={true} />
-                        
-                        <BottomSheetScrollView 
-                            style={{ flex: 1 }}
-                            contentContainerStyle={{ 
-                                paddingHorizontal: 20, 
-                                paddingTop: HEADER_HEIGHT + 20, 
-                                paddingBottom: 200, 
-                                flexGrow: 1 
-                            }}
-                        >
-                            {/* ส่วนหัวแสดงความน่าเชื่อถือ */}
-                            <View style={{ alignItems: 'center', marginBottom: 25 }}>
-                                <ShieldCheck size={56 * fontScale} color="#10B981" />
-                                <AppText style={[styles.contactTitle, { fontSize: 20 * fontScale, marginTop: 12, textAlign: 'center' }]}>
-                                    ข้อกำหนดและนโยบายคุ้มครองข้อมูลส่วนบุคคล
-                                </AppText>
-                                <AppText style={[styles.contactSubtitle, { fontSize: 13 * fontScale, color: '#94A3B8' }]}>
-                                    ปรับปรุงล่าสุด: 15 มกราคม 2569
-                                </AppText>
-                            </View>
-
-                            <View style={styles.privacyContentBox}>
-                                {/* ส่วนที่ 1: ข้อกำหนดการใช้งาน */}
-                                <AppText style={[styles.privacySectionTitle, { fontSize: 17 * fontScale, color: '#1E293B' }]}>
-                                    ส่วนที่ 1: ข้อกำหนดและเงื่อนไขการใช้บริการ
-                                </AppText>
-                                <AppText style={[styles.privacyBody, { fontSize: 14 * fontScale, marginBottom: 15 }]}>
-                                    การใช้งานแอปพลิเคชันนี้ ถือว่าท่านยอมรับข้อกำหนดทุกประการ บริการนี้จัดทำขึ้นเพื่อสนับสนุนการช่วยเหลือผู้ป่วยฉุกเฉินกลุ่มโรคหลอดเลือดหัวใจ (ACS) โดยโรงพยาบาลค่ายกฤษณ์สีวะรา ผู้ใช้งานมีหน้าที่ให้ข้อมูลที่เป็นจริงเพื่อประโยชน์ในการรักษาพยาบาล
-                                </AppText>
-
-                                <View style={styles.detailDivider} />
-
-                                {/* ส่วนที่ 2: รายละเอียดนโยบาย PDPA */}
-                                <AppText style={[styles.privacySectionTitle, { fontSize: 17 * fontScale, color: '#1E293B', marginTop: 10 }]}>
-                                    ส่วนที่ 2: นโยบายความเป็นส่วนตัว (Privacy Policy)
-                                </AppText>
-                                
-                                <AppText style={[styles.privacySectionTitle, { fontSize: 15 * fontScale, marginTop: 10 }]}>
-                                    1. ข้อมูลที่เราจัดเก็บและประมวลผล
-                                </AppText>
-                                <AppText style={[styles.privacyBody, { fontSize: 14 * fontScale }]}>
-                                    • ข้อมูลระบุตัวตน: ชื่อ-นามสกุล, เลขประจำตัวผู้ป่วย (HN), เลขบัตรประชาชน {"\n"}
-                                    • ข้อมูลสุขภาพ: โรคประจำตัว, ประวัติการแพ้ยา, สิทธิการรักษา {"\n"}
-                                    • ข้อมูลตำแหน่ง: พิกัดภูมิศาสตร์ (GPS) แบบเรียลไทม์ (Background Location) เมื่อมีการกดแจ้งเหตุ
-                                </AppText>
-
-                                <AppText style={[styles.privacySectionTitle, { fontSize: 15 * fontScale, marginTop: 15 }]}>
-                                    2. วัตถุประสงค์ในการนำข้อมูลไปใช้
-                                </AppText>
-                                <AppText style={[styles.privacyBody, { fontSize: 14 * fontScale }]}>
-                                    โรงพยาบาลจะใช้ข้อมูลพิกัดและข้อมูลสุขภาพเพื่อระบุตำแหน่งผู้ป่วยและส่งทีมกู้ชีพเข้าช่วยเหลืออย่างเร่งด่วน โดยจำกัดการเข้าถึงเฉพาะบุคลากรทางการแพทย์ที่เกี่ยวข้องเท่านั้น
-                                </AppText>
-
-                                <AppText style={[styles.privacySectionTitle, { fontSize: 15 * fontScale, marginTop: 15 }]}>
-                                    3. การรักษาความปลอดภัยและความลับ
-                                </AppText>
-                                <AppText style={[styles.privacyBody, { fontSize: 14 * fontScale }]}>
-                                    ข้อมูลของท่านจะได้รับการเข้ารหัสตามมาตรฐานสากล (Encryption) และจัดเก็บในระบบที่ปลอดภัยสูงเพื่อป้องกันการเข้าถึงโดยมิชอบ
-                                </AppText>
-
-                                <AppText style={[styles.privacySectionTitle, { fontSize: 15 * fontScale, marginTop: 15 }]}>
-                                    4. สิทธิของเจ้าของข้อมูลส่วนบุคคล
-                                </AppText>
-                                <AppText style={[styles.privacyBody, { fontSize: 14 * fontScale }]}>
-                                    ท่านมีสิทธิในการขอเข้าถึง ขอแก้ไข ขอคัดค้าน หรือขอให้ลบข้อมูลส่วนบุคคลของท่านได้ทุกเมื่อ โดยสามารถติดต่อศูนย์ข้อมูลของโรงพยาบาล
-                                </AppText>
-
-                                <View style={{ height: 1, backgroundColor: '#F1F5F9', marginVertical: 20 }} />
-
-                                <AppText style={[styles.privacyBody, { fontSize: 13 * fontScale, color: '#64748B', textAlign: 'center' }]}>
-                                    โรงพยาบาลค่ายกฤษณ์สีวะรา จังหวัดสกลนคร {"\n"}
-                                    โทรศัพท์ฉุกเฉิน: 064-7906014
-                                </AppText>
-                            </View>
-                        </BottomSheetScrollView>
-                    </Animated.View>
-                );
-            }
-
-            if (currentView === 'about') {
-                return (
-                    <Animated.View key="about" entering={subEntering} exiting={subExiting} style={{ flex: 1, position: 'relative' }}>
-                        <BottomSheetScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 150, paddingTop: HEADER_HEIGHT + 20 }}>
-                            <View style={styles.aboutContainer}>
-                                <View style={styles.logoCircle}><Heart size={24} color="white" fill="white" /></View>
-                                <AppText style={styles.aboutAppName}>KSVR ACS Fasttrack</AppText>
-                                <AppText style={styles.aboutVersion}>Version 1.0.0</AppText>
-                                <AppText style={styles.aboutDesc}>แอปพลิเคชันสำหรับแจ้งเหตุฉุกเฉินผู้ป่วยโรคหัวใจและหลอดเลือด โรงพยาบาลค่ายกฤษณ์สีวะรา จังหวัดสกลนคร</AppText>
-                            </View>
-                        </BottomSheetScrollView>
-                        <Header title="เกี่ยวกับแอปพลิเคชัน" showBack={true} />
-                    </Animated.View>
-                );
-            }
-
-    };
-
     if (loading) {
         return (
             <View style={styles.loadingContainer}>
@@ -1413,9 +1121,10 @@ const HomeScreen = () => {
                                         <View style={styles.avatarCircleMain}>
                                             {user?.picture_profile && !imageLoadError ? (
                                                 <Image 
-                                                    source={{ uri: `https://ksvrhospital.go.th/krit-siwara_smart_heart/files/avatars/${user.picture_profile}` }}
+                                                    cachePolicy="disk"
+                                                    source={{ uri: `${API_URL}/files/avatars/${user.picture_profile}` }}
                                                     style={{ width: '100%', height: '100%', borderRadius: 30 }}
-                                                    resizeMode="cover"
+                                                    contentFit="cover"
                                                     onError={() => setImageLoadError(true)}
                                                 />
                                             ) : (
@@ -1617,7 +1326,7 @@ const HomeScreen = () => {
                 >
                     {/* ✅ 2. ใส่ height: '100%' เพื่อให้เนื้อหาข้างในยืดเต็มพื้นที่ 90% นั้นเสมอ */}
                     <View style={{ flex: 1, height: '100%' }}> 
-                        <SettingsNavigation 
+                        <SettingsMenu 
                             currentView={settingsView}
                             onChangeView={setSettingsView}
                             onClose={() => settingsSheetRef.current?.dismiss()}
