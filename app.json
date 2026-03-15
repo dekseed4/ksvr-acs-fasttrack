@@ -2,6 +2,7 @@
   "expo": {
     "name": "KSVR ACS FAST TRACK",
     "slug": "ksvr-acs-fasttrack",
+    "scheme": "ksvr-acs-fasttrack",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -13,9 +14,6 @@
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "jsEngine": "hermes",
-    "experiments": {
-      "typedRoutes": true
-    },
     "ios": {
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "แอปพลิเคชันต้องการเข้าถึงตำแหน่งพิกัดขณะใช้งาน เพื่อให้ทีมแพทย์สามารถส่งรถพยาบาลไปช่วยเหลือคุณได้อย่างแม่นยำในกรณีเกิดเหตุฉุกเฉิน",
@@ -86,8 +84,7 @@
       ],
       "expo-notifications",
       "expo-maps",
-      "expo-image",
-      "expo-router"
+      "expo-image"
     ],
     "extra": {
       "eas": {

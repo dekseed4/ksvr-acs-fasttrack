@@ -8,43 +8,54 @@ import {
   StatusBar,
   ActivityIndicator,
   Alert,
-  Dimensions
+  Dimensions,
+  Linking
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ShieldCheck, FileText, Check, LogOut, AlertTriangle } from 'lucide-react-native';
+import { ShieldCheck, FileText, Check, LogOut, AlertTriangle, Square, CheckSquare } from 'lucide-react-native';
 import { useNavigation } from '@react-navigation/native';
 import axios from 'axios';
 import { useAuth } from '../context/AuthContext'; 
 import { API_URL } from '../config';
 
-
 const { width } = Dimensions.get('window');
 
 const TermsConsentScreen = () => {
   const navigation = useNavigation();
-  const { onLogout } = useAuth(); // เรียกใช้ logout กรณีผู้ใช้กดปฏิเสธ
+  const { onLogout } = useAuth(); 
   const [isSubmitting, setIsSubmitting] = useState(false);
+  
+  // 🌟 เพิ่ม State สำหรับ Checkbox 2 ข้อ
+  const [isTermsAccepted, setIsTermsAccepted] = useState(false);
+  const [isPrivacyAccepted, setIsPrivacyAccepted] = useState(false);
 
   const { authState, setAuthState } = useAuth();
 
+  // ฟังก์ชันเปิดเว็บ Privacy Policy ฉบับเต็ม
+  const openPrivacyPolicy = () => {
+    // 🔗 เปลี่ยน URL ด้านล่างนี้เป็นลิงก์หน้าเว็บจริงของโรงพยาบาลคุณครับ
+    Linking.openURL('https://ksvrhospital.rta.mi.th/ksvr/privacy_policy'); 
+  };
+
   // ฟังก์ชันกดยอมรับเงื่อนไข
   const handleAccept = async () => {
+    // 🌟 เช็คว่าติ๊กถูกครบ 2 ข้อหรือยัง
+    if (!isTermsAccepted || !isPrivacyAccepted) {
+      Alert.alert('กรุณายืนยัน', 'โปรดทำเครื่องหมายถูกทั้ง 2 ช่อง เพื่อยืนยันการยอมรับเงื่อนไขและนโยบายความเป็นส่วนตัว');
+      return;
+    }
+
     setIsSubmitting(true);
     try {
-      // เรียก API เพื่อบันทึกว่า User คนนี้ยอมรับแล้ว
-      // หมายเหตุ: ต้องมี Route 'accept-terms' ใน Laravel ตามที่คุยกันไว้
       const response = await axios.post(`${API_URL}/accept-terms`);
         if (response.data.status) {
-        // ✅ แก้ไขตรงนี้: ใช้ prev เพื่อดึงค่าล่าสุดชัวร์ๆ
             setAuthState(prev => ({
-                ...prev, // เก็บ token และ authenticated เดิมไว้
+                ...prev, 
                 user: {
-                    ...prev.user, // เก็บข้อมูล user เดิม (ชื่อ, hn ฯลฯ)
-                    term_accepted_at: new Date().toISOString() // เพิ่มวันที่ยอมรับเข้าไป
+                    ...prev.user, 
+                    term_accepted_at: new Date().toISOString() 
                 }
             }));
-
-            // ไม่ต้องทำอะไรต่อ เดี๋ยว App.js จะดีดไปหน้า Home เองเมื่อ State เปลี่ยน
         } 
     } catch (error) {
       console.error(error);
@@ -54,7 +65,6 @@ const TermsConsentScreen = () => {
     }
   };
 
-  // ฟังก์ชันปฏิเสธ (ออกจากระบบ)
   const handleDecline = () => {
     Alert.alert(
       'ยืนยันการปฏิเสธ',
@@ -65,14 +75,7 @@ const TermsConsentScreen = () => {
           text: 'ยืนยัน', 
           style: 'destructive',
           onPress: async () => {
-            // 1. สั่ง Logout เพื่อเคลียร์ Token และ State
             await onLogout(); 
-            
-            // 2. ❌ ลบบรรทัดนี้ทิ้งได้เลยครับ! ไม่ต้องสั่ง navigate
-            // navigation.replace('LoginScreen'); 
-            
-            // สาเหตุ: พอ onLogout ทำงาน -> authState จะเป็น false 
-            // -> App.js จะ render ใหม่ -> และแสดงหน้า Login ให้เองอัตโนมัติครับ
           }
         }
       ]
@@ -96,7 +99,7 @@ const TermsConsentScreen = () => {
       <View style={styles.cardContainer}>
         <View style={styles.documentHeader}>
            <FileText size={18} color="#64748b" />
-           <Text style={styles.documentTitle}>KSVR ACS FASTTRACK TERMS</Text>
+           <Text style={styles.documentTitle}>KSVR ACS FAST TRACK TERMS</Text>
         </View>
         
         <ScrollView 
@@ -104,7 +107,7 @@ const TermsConsentScreen = () => {
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={true}
         >
-          {/* กล่องแจ้งเตือน (ของคุณเดิม ทำไว้ดีมากครับ) */}
+          {/* กล่องแจ้งเตือน */}
           <View style={styles.section}>
              <View style={styles.warningBox}>
                 <AlertTriangle size={16} color="#b91c1c" style={{marginTop: 2}}/>
@@ -122,7 +125,7 @@ const TermsConsentScreen = () => {
             </Text>
           </View>
 
-          {/* ส่วนที่ 2: นโยบายความเป็นส่วนตัว (PDPA & Location) - สำคัญมากสำหรับการขึ้น Store */}
+          {/* ส่วนที่ 2: นโยบายความเป็นส่วนตัว (PDPA) */}
           <View style={styles.section}>
             <Text style={styles.sectionHeader}>2. การคุ้มครองข้อมูลส่วนบุคคล (PDPA)</Text>
             <Text style={styles.paragraph}>
@@ -142,34 +145,46 @@ const TermsConsentScreen = () => {
             </View>
           </View>
 
-          {/* ส่วนที่ 3: สิทธิของเจ้าของข้อมูล */}
-          <View style={styles.section}>
-            <Text style={styles.sectionHeader}>3. สิทธิของท่าน</Text>
-            <Text style={styles.paragraph}>
-              ข้อมูลของท่านจะถูกเก็บรักษาเป็นความลับสูงสุดและแชร์ให้เฉพาะทีมแพทย์ที่เกี่ยวข้อง ท่านมีสิทธิขอดู แก้ไข หรือขอลบข้อมูลบัญชีได้ตลอดเวลา หากท่านเพิกถอนความยินยอมในการเข้าถึงพิกัด แอปพลิเคชันจะไม่สามารถส่งรถพยาบาลไปช่วยเหลือท่านได้
-            </Text>
-          </View>
+          {/* 🌟 ปุ่มสำหรับกดอ่านฉบับเต็ม */}
+          <TouchableOpacity style={styles.readMoreButton} onPress={openPrivacyPolicy}>
+            <Text style={styles.readMoreText}>อ่านนโยบายความเป็นส่วนตัว (ฉบับเต็ม)</Text>
+          </TouchableOpacity>
 
-          {/* ส่วนที่ 4 */}
-          <View style={styles.section}>
-            <Text style={styles.sectionHeader}>4. การยอมรับเงื่อนไข</Text>
-            <Text style={styles.paragraph}>
-              การกดปุ่ม "ยอมรับเงื่อนไข" ถือว่าท่านได้อ่าน เข้าใจ และตกลงที่จะปฏิบัติตามข้อกำหนดและนโยบายความเป็นส่วนตัวข้างต้นทุกประการ
-            </Text>
-          </View>
-
-          {/* พื้นที่ว่างด้านล่างเพื่อให้ Scroll สุดแล้วไม่ติดปุ่ม */}
-          <View style={{ height: 40 }} />
+          <View style={{ height: 20 }} />
         </ScrollView>
-
-        {/* Shadow Overlay ด้านล่างของกระดาษเพื่อให้ดูมีมิติ */}
         <View style={styles.fadeOverlay} />
+      </View>
+
+      {/* 🌟 ส่วนสำหรับ Checkbox ยืนยัน */}
+      <View style={styles.checkboxContainer}>
+        <TouchableOpacity 
+          style={styles.checkboxRow} 
+          onPress={() => setIsTermsAccepted(!isTermsAccepted)}
+          activeOpacity={0.7}
+        >
+          {isTermsAccepted ? <CheckSquare size={24} color="#064e3b" /> : <Square size={24} color="#94a3b8" />}
+          <Text style={styles.checkboxText}>
+            ข้าพเจ้าได้อ่านและยอมรับ <Text style={{fontWeight: 'bold'}}>ข้อกำหนดการใช้งาน</Text>
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity 
+          style={styles.checkboxRow} 
+          onPress={() => setIsPrivacyAccepted(!isPrivacyAccepted)}
+          activeOpacity={0.7}
+        >
+          {isPrivacyAccepted ? <CheckSquare size={24} color="#064e3b" /> : <Square size={24} color="#94a3b8" />}
+          <Text style={styles.checkboxText}>
+            ข้าพเจ้ายินยอมให้ประมวลผลข้อมูลสุขภาพและตำแหน่งที่ตั้งตาม <Text style={{fontWeight: 'bold'}}>นโยบายความเป็นส่วนตัว</Text>
+          </Text>
+        </TouchableOpacity>
       </View>
 
       {/* Action Footer */}
       <View style={styles.footer}>
         <TouchableOpacity 
-          style={styles.acceptButton} 
+          // 🌟 ปรับสีปุ่มให้เทาลงถ้ายังติ๊กไม่ครบ
+          style={[styles.acceptButton, (!isTermsAccepted || !isPrivacyAccepted) && styles.acceptButtonDisabled]} 
           onPress={handleAccept}
           disabled={isSubmitting}
         >
@@ -177,7 +192,7 @@ const TermsConsentScreen = () => {
             <ActivityIndicator color="#ffffff" />
           ) : (
             <>
-              <Text style={styles.acceptText}>ยอมรับเงื่อนไข</Text>
+              <Text style={styles.acceptText}>ยอมรับและเริ่มต้นใช้งาน</Text>
               <Check size={20} color="#ffffff" strokeWidth={3} />
             </>
           )}
@@ -197,161 +212,71 @@ const TermsConsentScreen = () => {
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f1f5f9', // สีพื้นหลังเดียวกับ Login
-  },
-  header: {
-    paddingHorizontal: 24,
-    paddingTop: 10,
-    paddingBottom: 20,
-    alignItems: 'center',
-  },
-  iconContainer: {
-    width: 60,
-    height: 60,
-    backgroundColor: '#d1fae5',
-    borderRadius: 30,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  title: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#064e3b',
-    marginBottom: 4,
-  },
-  subtitle: {
-    fontSize: 14,
-    color: '#64748b',
-  },
-  cardContainer: {
-    flex: 1,
-    backgroundColor: '#ffffff',
-    marginHorizontal: 20,
-    borderRadius: 20,
-    elevation: 4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-  },
-  documentHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 16,
-    backgroundColor: '#f8fafc',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e2e8f0',
-    gap: 8,
-  },
-  documentTitle: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: '#64748b',
-    letterSpacing: 1,
-  },
-  scrollView: {
-    flex: 1,
-    backgroundColor: '#ffffff',
-  },
-  scrollContent: {
-    padding: 20,
-  },
-  section: {
-    marginBottom: 20,
-  },
-  sectionHeader: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#1e293b',
-    marginBottom: 8,
-  },
-  paragraph: {
-    fontSize: 14,
-    color: '#475569',
-    lineHeight: 22,
-    marginBottom: 8,
-  },
-  bulletItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 6,
-    paddingLeft: 8,
-  },
-  dot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: '#059669',
-    marginRight: 10,
-  },
-  bulletText: {
-    fontSize: 14,
-    color: '#475569',
-  },
-  warningBox: {
-    flexDirection: 'row',
-    backgroundColor: '#fef2f2',
+  // ... (เก็บ styles เดิมของคุณไว้ทั้งหมด และเพิ่มส่วนล่างนี้เข้าไปครับ) ...
+  container: { flex: 1, backgroundColor: '#f1f5f9' },
+  header: { paddingHorizontal: 24, paddingTop: 10, paddingBottom: 20, alignItems: 'center' },
+  iconContainer: { width: 60, height: 60, backgroundColor: '#d1fae5', borderRadius: 30, justifyContent: 'center', alignItems: 'center', marginBottom: 12 },
+  title: { fontSize: 20, fontWeight: 'bold', color: '#064e3b', marginBottom: 4 },
+  subtitle: { fontSize: 14, color: '#64748b' },
+  cardContainer: { flex: 1, backgroundColor: '#ffffff', marginHorizontal: 20, borderRadius: 20, elevation: 4, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 8, overflow: 'hidden', borderWidth: 1, borderColor: '#e2e8f0' },
+  documentHeader: { flexDirection: 'row', alignItems: 'center', padding: 16, backgroundColor: '#f8fafc', borderBottomWidth: 1, borderBottomColor: '#e2e8f0', gap: 8 },
+  documentTitle: { fontSize: 12, fontWeight: '800', color: '#64748b', letterSpacing: 1 },
+  scrollView: { flex: 1, backgroundColor: '#ffffff' },
+  scrollContent: { padding: 20 },
+  section: { marginBottom: 20 },
+  sectionHeader: { fontSize: 16, fontWeight: 'bold', color: '#1e293b', marginBottom: 8 },
+  paragraph: { fontSize: 14, color: '#475569', lineHeight: 22, marginBottom: 8 },
+  bulletItem: { flexDirection: 'row', alignItems: 'center', marginBottom: 6, paddingLeft: 8 },
+  dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#059669', marginRight: 10 },
+  bulletText: { fontSize: 14, color: '#475569', flex: 1 },
+  warningBox: { flexDirection: 'row', backgroundColor: '#fef2f2', padding: 12, borderRadius: 12, borderWidth: 1, borderColor: '#fecaca', gap: 10 },
+  warningText: { flex: 1, fontSize: 13, color: '#991b1b', fontWeight: '600', lineHeight: 20 },
+  
+  // 🌟 Styles ใหม่ที่เพิ่มเข้ามา
+  readMoreButton: {
+    backgroundColor: '#f1f5f9',
     padding: 12,
-    borderRadius: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginTop: 10,
     borderWidth: 1,
-    borderColor: '#fecaca',
-    gap: 10,
+    borderColor: '#e2e8f0'
   },
-  warningText: {
-    flex: 1,
-    fontSize: 13,
-    color: '#991b1b',
-    fontWeight: '600',
-    lineHeight: 20,
+  readMoreText: {
+    color: '#0369a1', // สีน้ำเงินเหมือนลิงก์
+    fontWeight: 'bold',
+    fontSize: 14,
   },
-  footer: {
-    padding: 24,
+  checkboxContainer: {
+    paddingHorizontal: 24,
+    paddingTop: 20,
+    paddingBottom: 10,
     backgroundColor: '#f1f5f9',
   },
-  acceptButton: {
-    backgroundColor: '#064e3b', // สีเขียวเข้ม Theme โรงพยาบาล
+  checkboxRow: {
     flexDirection: 'row',
-    height: 56,
-    borderRadius: 16,
-    justifyContent: 'center',
     alignItems: 'center',
-    gap: 10,
-    elevation: 4,
-    shadowColor: '#064e3b',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 8,
     marginBottom: 16,
+    gap: 12,
   },
-  acceptText: {
-    color: '#ffffff',
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  declineButton: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingVertical: 12,
-    gap: 8,
-  },
-  declineText: {
-    color: '#64748b',
+  checkboxText: {
+    flex: 1,
     fontSize: 14,
-    fontWeight: '600',
+    color: '#334155',
+    lineHeight: 20,
   },
-  fadeOverlay: {
-    height: 20,
-    backgroundColor: 'transparent',
-    // สามารถใส่ LinearGradient ตรงนี้ได้ถ้าต้องการให้สวยขึ้น
-    // แต่เพื่อความง่ายใช้แค่ View ธรรมดา
-  }
+  acceptButtonDisabled: {
+    backgroundColor: '#cbd5e1', // สีเทาเมื่อยังไม่ติ๊ก
+    shadowOpacity: 0,
+    elevation: 0,
+  },
+  
+  footer: { paddingHorizontal: 24, paddingBottom: 24, backgroundColor: '#f1f5f9' },
+  acceptButton: { backgroundColor: '#064e3b', flexDirection: 'row', height: 56, borderRadius: 16, justifyContent: 'center', alignItems: 'center', gap: 10, elevation: 4, shadowColor: '#064e3b', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.25, shadowRadius: 8, marginBottom: 16 },
+  acceptText: { color: '#ffffff', fontSize: 18, fontWeight: 'bold' },
+  declineButton: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', paddingVertical: 12, gap: 8 },
+  declineText: { color: '#64748b', fontSize: 14, fontWeight: '600' },
+  fadeOverlay: { height: 20, backgroundColor: 'transparent' }
 });
 
 export default TermsConsentScreen;
