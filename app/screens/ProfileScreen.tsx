@@ -112,7 +112,7 @@ const ProfileScreen = ({ navigation }) => {
                   <Image 
                     source={{ uri: `${API_URL}/files/avatars/${user.detail_genaral?.picture_profile}` }}
                     style={{ width: '100%', height: '100%', borderRadius: 30 }}
-                    resizeMode="cover"
+                    contentFit="cover"
                     onError={() => setImageLoadError(true)}
                   />
                 ) : (

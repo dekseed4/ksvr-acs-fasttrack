@@ -41,7 +41,7 @@ import * as Haptics from 'expo-haptics';
 import * as LocalAuthentication from 'expo-local-authentication';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AppText } from '../components/AppText';
-import { useTheme, FONT_SCALES } from '../context/ThemeContext';
+import { useTheme } from '../context/ThemeContext';
 import * as Notifications from 'expo-notifications';
 import NetInfo from '@react-native-community/netinfo';
 import Svg, { Circle } from 'react-native-svg';
@@ -70,6 +70,7 @@ import {
   Eye,    
   EyeOff 
 } from 'lucide-react-native';
+import Constants from 'expo-constants';
 
 import { useAuth } from '../context/AuthContext';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -271,6 +272,12 @@ const HomeScreen = () => {
 
     const authenticateUser = async (onSuccess) => {
         try {
+            if (Constants.appOwnership === 'expo') {
+                console.log("รันบน Expo Go: ข้ามการสแกน Face ID ชั่วคราว");
+                Alert.alert("โหมดจำลอง", "อนุญาตให้เข้าสู่ระบบ (ข้าม Face ID เนื่องจากรันบน Expo Go)");
+                onSuccess();
+                return; // จบการทำงานฟังก์ชันทันที
+            }
             const now = Date.now();
             if (lastAuthTime.current > 0 && (now - lastAuthTime.current < AUTH_GRACE_PERIOD)) {
                 console.log("Grace period active: Skip biometric");
@@ -280,6 +287,8 @@ const HomeScreen = () => {
 
             const hasHardware = await LocalAuthentication.hasHardwareAsync();
             const isEnrolled = await LocalAuthentication.isEnrolledAsync();
+
+            // ... (โค้ดส่วนบนเหมือนเดิม) ...
 
             if (hasHardware && isEnrolled) {
                 if (biometricPermission === null) {
@@ -292,28 +301,42 @@ const HomeScreen = () => {
                                 style: "cancel",
                                 onPress: async () => {
                                     setBiometricPermission(false);
-                                    await AsyncStorage.setItem('use_biometric', 'false'); // บันทึกค่า
+                                    await AsyncStorage.setItem('use_biometric', 'false');
                                     onSuccess(); 
                                 }
                             },
                             {
                                 text: "ใช้งาน",
-                                onPress: async () => {
-                                    const result = await LocalAuthentication.authenticateAsync({
-                                        promptMessage: 'ยืนยันตัวตนเพื่อตั้งค่า',
-                                        cancelLabel: 'ยกเลิก',
-                                        fallbackLabel: 'ใช้รหัสผ่าน',
-                                        disableDeviceFallback: false,
-                                    });
-                                    if (result.success) {
-                                        setBiometricPermission(true);
-                                        await AsyncStorage.setItem('use_biometric', 'true'); // บันทึกค่า
+                                onPress: () => { 
+                                    // 🌟 1. เพิ่มเวลาหน่วงเป็น 1000 (1 วินาทีเต็ม) เพื่อให้ชัวร์ว่า Alert ปิดสนิท 100%
+                                    setTimeout(async () => {
+                                        try {
+                                            const result = await LocalAuthentication.authenticateAsync({
+                                                promptMessage: 'ยืนยันตัวตนเพื่อตั้งค่า',
+                                                cancelLabel: 'ยกเลิก',
+                                                disableDeviceFallback: true, 
+                                            });
 
-                                        lastAuthTime.current = Date.now();
-
-                                        onSuccess();
-                                        triggerHaptic('notificationSuccess');
-                                    }
+                                            if (result.success) {
+                                                setBiometricPermission(true);
+                                                await AsyncStorage.setItem('use_biometric', 'true');
+                                                // @ts-ignore
+                                                lastAuthTime.current = Date.now();
+                                                onSuccess();
+                                                triggerHaptic('notificationSuccess');
+                                            } else {
+                                                // 🌟 2. ดึงเอา Error Code ของระบบ iOS ออกมาโชว์ให้เห็นกันชัดๆ
+                                                Alert.alert(
+                                                    "ไม่สำเร็จ", 
+                                                    `เกิดข้อผิดพลาดรหัส: ${result.error}\nกรุณาแคปหน้าจอนี้แจ้งผู้พัฒนา`
+                                                );
+                                                console.log("Biometric Result Error:", result);
+                                            }
+                                        } catch (error) {
+                                            console.log("Biometric setup error:", error);
+                                            Alert.alert("ข้อผิดพลาดระบบ", String(error));
+                                        }
+                                    }, 1000); // รอ 1 วินาที
                                 }
                             }
                         ]
@@ -322,8 +345,8 @@ const HomeScreen = () => {
                     const result = await LocalAuthentication.authenticateAsync({
                         promptMessage: 'ยืนยันตัวตนเพื่อเข้าถึงข้อมูล',
                         cancelLabel: 'ยกเลิก',
-                        fallbackLabel: 'ใช้รหัสผ่าน',
-                        disableDeviceFallback: false,
+                        // 🌟 แก้ไขจุดที่ 2: เปลี่ยนเป็น true
+                        disableDeviceFallback: true, 
                     });
                     if (result.success) {
                         lastAuthTime.current = Date.now();
@@ -331,15 +354,10 @@ const HomeScreen = () => {
                         triggerHaptic('notificationSuccess');
                     } else {
                         // สแกนไม่ผ่าน
-                        // Alert.alert('ยืนยันตัวตนไม่สำเร็จ', 'กรุณาลองใหม่อีกครั้ง');
                     }
                 } else {
-                    // ถ้าตั้งค่าไว้ว่าไม่ใช้ ก็ผ่านได้เลย
                     onSuccess();
                 }
-            } else {
-                // ถ้าเครื่องไม่รองรับ ให้ผ่านได้เลย
-                onSuccess();
             }
         } catch (error) {
             console.log("Biometric error:", error);
@@ -1080,7 +1098,7 @@ const HomeScreen = () => {
                     <View style={styles.logoContainer}>
                         <Image 
                             source={require('../../assets/logo.png')}
-                            style={{ width: 40, height: 40, resizeMode: 'contain' }} 
+                            style={{ width: 40, height: 40, contentFit: 'contain' }} 
                         />
                         <AppText style={styles.appNameText}>KSVR <AppText style={styles.appNameLight}>ACS FAST TRACK</AppText></AppText>
                     </View>
@@ -1222,7 +1240,7 @@ const HomeScreen = () => {
                                                     <>
                                                     {/* <Image 
                                                         source={require('../../assets/logo.png')} 
-                                                        style={{ width: 90, height: 90, resizeMode: 'contain' }} 
+                                                        style={{ width: 90, height: 90, contentFit: 'contain' }} 
                                                     /> */}
                                                     <Heart size={56} color="white" fill="white" />
                                                     <Text style={styles.sosText}>ฉุกเฉิน</Text></>

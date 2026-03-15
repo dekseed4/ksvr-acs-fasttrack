@@ -87,25 +87,25 @@ export const AuthProvider = ({ children }: any) => {
         };
     }, []); // ทำงานครั้งเดียวตอนเริ่มแอป
     
-useEffect(() => {
-    if (expoPushToken && authState?.authenticated && authState?.token) {
-        console.log("Sending token:", expoPushToken); // 1. เช็คดูว่า Token หน้าตาเป็นยังไง
+    useEffect(() => {
+        if (expoPushToken && authState?.authenticated && authState?.token) {
+            console.log("Sending token:", expoPushToken); // 1. เช็คดูว่า Token หน้าตาเป็นยังไง
 
-        axios.post(`${API_URL}/update-device-tokens`, { // <-- เช็ค URL ด้วยว่าใน Laravel มี s หรือไม่มี s
-            token: typeof expoPushToken === 'object' ? expoPushToken.data : expoPushToken, // กันเหนียว
-            platform: Platform.OS
-        })
-        .then((response) => {
-             console.log("✅ Success:", response.data);
-        })
-        .catch(err => { 
-            // --- แก้ตรงนี้ครับ เพื่อดูไส้ในของ Error 500 ---
-            console.log("❌ Error Status:", err.response?.status);
-            console.log("❌ Error Detail:", JSON.stringify(err.response?.data, null, 2)); 
-            // มันจะพ่น Error จาก Laravel ออกมาตรงนี้เลย
-        });
-    }
-}, [expoPushToken, authState?.authenticated]);
+            axios.post(`${API_URL}/update-device-tokens`, { // <-- เช็ค URL ด้วยว่าใน Laravel มี s หรือไม่มี s
+                token: typeof expoPushToken === 'object' ? expoPushToken.data : expoPushToken, // กันเหนียว
+                platform: Platform.OS
+            })
+            .then((response) => {
+                console.log("✅ Success:", response.data);
+            })
+            .catch(err => { 
+                // --- แก้ตรงนี้ครับ เพื่อดูไส้ในของ Error 500 ---
+                console.log("❌ Error Status:", err.response?.status);
+                console.log("❌ Error Detail:", JSON.stringify(err.response?.data, null, 2)); 
+                // มันจะพ่น Error จาก Laravel ออกมาตรงนี้เลย
+            });
+        }
+    }, [expoPushToken, authState?.authenticated, authState?.token]);
   
     useEffect(() => {
         const loadToken = async () => {
@@ -216,6 +216,42 @@ useEffect(() => {
             });
         }
     };
+
+    useEffect(() => {
+        // สร้าง Interceptor ดักจับ 'ขาลง' (Response) จาก API
+        const interceptor = axios.interceptors.response.use(
+            (response) => {
+                return response;
+            },
+            async (error) => {
+                // เก็บข้อมูล Request ต้นทางไว้เช็ค
+                const originalRequest = error.config;
+
+                // ✨ เพิ่มเงื่อนไข && !originalRequest.url.includes('/login') เข้าไป
+                // เพื่อบอกว่า "ถ้าเป็น Error 401 จากการล็อกอิน ไม่ต้องทำงานนะ ปล่อยผ่านไปให้หน้า Login จัดการเอง"
+                if (error.response && error.response.status === 401 && !originalRequest.url.includes('/login')) {
+                    
+                    console.log("⚠️ Token หมดอายุ หรือไม่ถูกต้อง สั่งบังคับ Logout...");
+                    
+                    Alert.alert(
+                        "เซสชันหมดอายุ",
+                        "กรุณาเข้าสู่ระบบใหม่อีกครั้งเพื่อความปลอดภัย",
+                        [{ text: "ตกลง" }]
+                    );
+
+                    await logout();
+                }
+                
+                return Promise.reject(error);
+            }
+        );
+
+        // Cleanup: ลบ Interceptor ออกเมื่อไม่ได้ใช้งาน เพื่อป้องกันโค้ดรันซ้อนกัน (Memory Leak)
+        return () => {
+            axios.interceptors.response.eject(interceptor);
+        };
+    }, []); // วงเล็บว่าง [] หมายถึงให้รันแค่ตอนเปิดแอปครั้งแรกครั้งเดียว
+    
     const value = {
         authState,
         setAuthState,

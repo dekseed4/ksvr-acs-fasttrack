@@ -6,9 +6,9 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "splash": {
-      "image": "./assets/splash-icon.png", 
-      "resizeMode": "contain", 
-      "backgroundColor": "#FFFFFF" 
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#FFFFFF"
     },
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
@@ -34,7 +34,8 @@
       "buildNumber": "1",
       "supportsTablet": true,
       "config": {
-        "usesNonExemptEncryption": false
+        "usesNonExemptEncryption": false,
+        "googleMapsApiKey": "AIzaSyC7F_mST9Xc2UrLNyw5cMbMAtg5VXUzvU8"
       }
     },
     "android": {
@@ -42,7 +43,7 @@
       "versionCode": 1,
       "splash": {
         "resizeMode": "contain",
-        "backgroundColor": "#FFFFFF" 
+        "backgroundColor": "#FFFFFF"
       },
       "permissions": [
         "ACCESS_FINE_LOCATION",
@@ -55,7 +56,7 @@
       ],
       "config": {
         "googleMaps": {
-          "apiKey": "ใส่_GOOGLE_MAPS_API_KEY_จริงของคุณที่นี่"
+          "apiKey": "AIzaSyC7F_mST9Xc2UrLNyw5cMbMAtg5VXUzvU8"
         }
       },
       "adaptiveIcon": {
@@ -64,6 +65,12 @@
       }
     },
     "plugins": [
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "ขออนุญาตใช้ Face ID เพื่อยืนยันตัวตนก่อนเข้าถึงข้อมูลสุขภาพผู้ป่วย"
+        }
+      ],
       [
         "expo-location",
         {
@@ -78,7 +85,9 @@
         }
       ],
       "expo-notifications",
-      "expo-maps"
+      "expo-maps",
+      "expo-image",
+      "expo-router"
     ],
     "extra": {
       "eas": {

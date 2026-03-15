@@ -104,48 +104,57 @@ const TermsConsentScreen = () => {
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={true}
         >
-          {/* ข้อที่ 1 */}
-          <View style={styles.section}>
-            <Text style={styles.sectionHeader}>1. วัตถุประสงค์การให้บริการ</Text>
-            <Text style={styles.paragraph}>
-              แอปพลิเคชันนี้จัดทำขึ้นเพื่อเป็น "เครื่องมือช่วยอำนวยความสะดวก" ในการแจ้งเหตุฉุกเฉินและส่งพิกัดตำแหน่งของผู้ป่วยกลุ่มเสี่ยง ไปยังศูนย์รับแจ้งเหตุ เพื่อให้ทีมแพทย์เข้าช่วยเหลือได้รวดเร็วขึ้น
-            </Text>
-          </View>
-
-          {/* ข้อที่ 2 */}
+          {/* กล่องแจ้งเตือน (ของคุณเดิม ทำไว้ดีมากครับ) */}
           <View style={styles.section}>
              <View style={styles.warningBox}>
                 <AlertTriangle size={16} color="#b91c1c" style={{marginTop: 2}}/>
                 <Text style={styles.warningText}>
-                   ข้อสำคัญ: หากแอปพลิเคชันไม่ตอบสนอง หรือไม่มีสัญญาณอินเทอร์เน็ต ผู้ใช้งานต้องโทรแจ้งสายด่วน 1669 ทันที
+                   ข้อสำคัญ: แอปพลิเคชันนี้เป็นเพียงเครื่องมือช่วยเหลือ หากแอปไม่ตอบสนอง หรือไม่มีสัญญาณอินเทอร์เน็ต กรุณาโทรสายด่วน 1669 ทันที
                 </Text>
              </View>
           </View>
 
-          {/* ข้อที่ 3 */}
+          {/* ส่วนที่ 1: ข้อตกลงการใช้งาน */}
           <View style={styles.section}>
-            <Text style={styles.sectionHeader}>2. การคุ้มครองข้อมูลส่วนบุคคล (PDPA)</Text>
+            <Text style={styles.sectionHeader}>1. ขอบเขตการให้บริการ</Text>
             <Text style={styles.paragraph}>
-              ข้าพเจ้ายินยอมให้เปิดเผยข้อมูลดังต่อไปนี้เพื่อการรักษาพยาบาลฉุกเฉิน:
-            </Text>
-            <View style={styles.bulletItem}>
-              <View style={styles.dot} />
-              <Text style={styles.bulletText}>ข้อมูลสุขภาพ (โรคประจำตัว, ยา, การแพ้ยา)</Text>
-            </View>
-            <View style={styles.bulletItem}>
-              <View style={styles.dot} />
-              <Text style={styles.bulletText}>พิกัดตำแหน่งปัจจุบัน (GPS Location)</Text>
-            </View>
-            <Text style={styles.paragraph}>
-              ข้อมูลของท่านจะถูกเก็บรักษาเป็นความลับและใช้เพื่อการช่วยเหลือชีวิตเท่านั้น
+              แอปพลิเคชันนี้ใช้สำหรับแจ้งเหตุฉุกเฉินทางการแพทย์ (โรคหลอดเลือดหัวใจเฉียบพลัน) และติดตามพิกัดรถพยาบาลของ รพ.ค่ายกฤษณ์สีวะรา ความรวดเร็วในการให้บริการขึ้นอยู่กับสภาพการจราจรและเครือข่ายอินเทอร์เน็ต โรงพยาบาลจะไม่รับผิดชอบต่อความล่าช้าที่เกิดจากเหตุสุดวิสัย
             </Text>
           </View>
 
-          {/* ข้อที่ 4 */}
+          {/* ส่วนที่ 2: นโยบายความเป็นส่วนตัว (PDPA & Location) - สำคัญมากสำหรับการขึ้น Store */}
           <View style={styles.section}>
-            <Text style={styles.sectionHeader}>3. การยอมรับเงื่อนไข</Text>
+            <Text style={styles.sectionHeader}>2. การคุ้มครองข้อมูลส่วนบุคคล (PDPA)</Text>
             <Text style={styles.paragraph}>
-              การกดปุ่ม "ยอมรับเงื่อนไข" ถือว่าท่านได้อ่าน เข้าใจ และตกลงที่จะปฏิบัติตามข้อกำหนดและเงื่อนไขข้างต้นทุกประการ
+              เพื่อให้การช่วยเหลือชีวิตเป็นไปอย่างรวดเร็วและแม่นยำ ข้าพเจ้ายินยอมให้โรงพยาบาลรวบรวมและประมวลผลข้อมูลดังต่อไปนี้:
+            </Text>
+            <View style={styles.bulletItem}>
+              <View style={styles.dot} />
+              <Text style={styles.bulletText}>ข้อมูลยืนยันตัวตน และข้อมูลสุขภาพ (เช่น โรคประจำตัว, ประวัติการแพ้ยา)</Text>
+            </View>
+            <View style={styles.bulletItem}>
+              <View style={styles.dot} />
+              <Text style={styles.bulletText}>พิกัดตำแหน่ง (Location): ทั้งในขณะใช้งานแอปพลิเคชัน และทำงานอยู่เบื้องหลัง (Background Location) เพื่อให้ทีมแพทย์สามารถติดตามการเคลื่อนที่ของท่านได้แบบเรียลไทม์ระหว่างรอการช่วยเหลือ</Text>
+            </View>
+            <View style={styles.bulletItem}>
+              <View style={styles.dot} />
+              <Text style={styles.bulletText}>การยืนยันตัวตนด้วย Face ID / Fingerprint เพื่อรักษาความปลอดภัยของข้อมูลสุขภาพ</Text>
+            </View>
+          </View>
+
+          {/* ส่วนที่ 3: สิทธิของเจ้าของข้อมูล */}
+          <View style={styles.section}>
+            <Text style={styles.sectionHeader}>3. สิทธิของท่าน</Text>
+            <Text style={styles.paragraph}>
+              ข้อมูลของท่านจะถูกเก็บรักษาเป็นความลับสูงสุดและแชร์ให้เฉพาะทีมแพทย์ที่เกี่ยวข้อง ท่านมีสิทธิขอดู แก้ไข หรือขอลบข้อมูลบัญชีได้ตลอดเวลา หากท่านเพิกถอนความยินยอมในการเข้าถึงพิกัด แอปพลิเคชันจะไม่สามารถส่งรถพยาบาลไปช่วยเหลือท่านได้
+            </Text>
+          </View>
+
+          {/* ส่วนที่ 4 */}
+          <View style={styles.section}>
+            <Text style={styles.sectionHeader}>4. การยอมรับเงื่อนไข</Text>
+            <Text style={styles.paragraph}>
+              การกดปุ่ม "ยอมรับเงื่อนไข" ถือว่าท่านได้อ่าน เข้าใจ และตกลงที่จะปฏิบัติตามข้อกำหนดและนโยบายความเป็นส่วนตัวข้างต้นทุกประการ
             </Text>
           </View>
 

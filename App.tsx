@@ -12,6 +12,7 @@ import HospitalMapScreen from './app/screens/HospitalMapScreen';
 import KnowledgeScreen from './app/screens/KnowledgeScreen';
 import TermsConsentScreen from './app/screens/TermsConsentScreen';
 import NotificationScreen from './app/screens/NotificationScreen';
+import { LoadingProvider, useLoading } from './app/context/LoadingContext';
 import { ThemeProvider } from './app/context/ThemeContext';
 import { View, Text, ActivityIndicator, StyleSheet, Platform } from 'react-native';
 import { AppText } from './app/components/AppText';
@@ -41,6 +42,7 @@ function AppTabs() {
                     } else if (route.name === 'HospitalMap') {
                         return <Map {...iconProps} />;
                     }
+                    return null;
                 },
                 // tabBarActiveTintColor: 'tomato',
                 // tabBarInactiveTintColor: 'gray',
@@ -96,13 +98,15 @@ function AppTabs() {
 export default function App() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-        <BottomSheetModalProvider>
-            <AuthProvider> 
-                <ThemeProvider>
-                    <Layout />
-                </ThemeProvider>
-            </AuthProvider>
-        </BottomSheetModalProvider>
+        <LoadingProvider>
+            <ThemeProvider>
+                <AuthProvider> 
+                    <BottomSheetModalProvider>
+                        <Layout />
+                    </BottomSheetModalProvider> 
+                </AuthProvider>
+            </ThemeProvider>
+        </LoadingProvider> 
     </GestureHandlerRootView>
   );
 }
@@ -121,7 +125,7 @@ export const Layout = () => {
                 </View>
                 <ActivityIndicator size="large" color="#EF4444" style={{ marginBottom: 20 }} />
                 <AppText style={styles.loadingTitle}>KSVR ACS</AppText>
-                <AppText style={styles.loadingText}>กำลังเตรียมระบบ...</AppText>
+                <AppText style={styles.loadingText}>กำลังตรวจสอบสิทธิ์...</AppText>
             </View>
         );
     }

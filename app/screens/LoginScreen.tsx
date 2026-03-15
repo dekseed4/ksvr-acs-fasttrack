@@ -101,7 +101,7 @@ const LoginScreen = () => {
               </View> */}
                 <Image 
                     source={require('../../assets/logo.png')}
-                    style={{ width: 150, height: 150, resizeMode: 'contain' }} 
+                    style={{ width: 150, height: 150, contentFit: 'contain' }} 
                 />
             </View>
             

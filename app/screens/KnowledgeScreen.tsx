@@ -124,7 +124,7 @@ const styles = StyleSheet.create({
         ...StyleSheet.absoluteFillObject,
         width: '100%',
         height: '100%',
-        resizeMode: 'cover',
+        contentFit: 'cover',
     },
     headerOverlay: {
         ...StyleSheet.absoluteFillObject,
