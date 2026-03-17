@@ -268,7 +268,26 @@ const HospitalMapScreen = () => {
                     />
                 ))}
             </MapView>
-
+            {location && (
+                <TouchableOpacity 
+                    style={styles.userLocationBar}
+                    activeOpacity={0.8}
+                    onPress={() => {
+                        // พอกดปุ่มนี้ ให้กล้องซูมกลับมาที่พิกัดผู้ใช้
+                        mapRef.current?.animateToRegion({
+                            latitude: location.coords.latitude,
+                            longitude: location.coords.longitude,
+                            latitudeDelta: 0.02,
+                            longitudeDelta: 0.02,
+                        }, 1000);
+                    }}
+                >
+                    <View style={styles.pulseDot}>
+                        <View style={styles.innerDot} />
+                    </View>
+                    <AppText style={styles.userLocationText}>คุณอยู่ตรงนี้</AppText>
+                </TouchableOpacity>
+            )}
             <BottomSheet 
                 ref={bottomSheetRef} 
                 index={1} 
@@ -358,6 +377,45 @@ const styles = StyleSheet.create({
         color: 'white',
         fontWeight: 'bold',
         textAlign: 'center',
+    },
+    // ... (สไตล์เดิมของคุณ) ...
+    
+    // 🌟 สไตล์สำหรับบาร์ "คุณอยู่ตรงนี้"
+    userLocationBar: {
+        position: 'absolute',
+        top: Platform.OS === 'ios' ? 60 : 40, // เว้นระยะจากขอบจอบน
+        alignSelf: 'center',
+        backgroundColor: 'white',
+        paddingHorizontal: 16,
+        paddingVertical: 10,
+        borderRadius: 24,
+        flexDirection: 'row',
+        alignItems: 'center',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.15,
+        shadowRadius: 8,
+        elevation: 6,
+        gap: 10,
+    },
+    pulseDot: {
+        width: 16,
+        height: 16,
+        borderRadius: 8,
+        backgroundColor: 'rgba(59, 130, 246, 0.2)', // สีฟ้าอ่อนๆ ทำเป็นขอบเรืองแสง
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    innerDot: {
+        width: 8,
+        height: 8,
+        borderRadius: 4,
+        backgroundColor: '#3B82F6', // สีฟ้าเข้มให้เหมือนจุดแผนที่ของ Apple
+    },
+    userLocationText: {
+        fontSize: 14,
+        fontWeight: 'bold',
+        color: '#1E293B',
     },
 });
 

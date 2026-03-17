@@ -151,7 +151,15 @@ const LoginScreen = () => {
                 <Clock size={14} color="#94a3b8" />
                 <Text style={styles.rememberText}>จดจำข้อมูล</Text>
               </View>
-              <TouchableOpacity>
+              <TouchableOpacity 
+                onPress={() => {
+                  Alert.alert(
+                    'ลืมรหัสผ่าน', // หัวข้อ
+                    'กรุณาติดต่อเจ้าหน้าที่ดูแลระบบ (Admin) ของโรงพยาบาล เพื่อดำเนินการรีเซ็ตรหัสผ่านใหม่ครับ', // ข้อความรายละเอียด
+                    [{ text: 'ตกลง', style: 'default' }] // ปุ่มกดปิด
+                  );
+                }}
+              >
                 <Text style={styles.forgotText}>ลืมรหัสผ่าน?</Text>
               </TouchableOpacity>
             </View>
@@ -204,7 +212,7 @@ const LoginScreen = () => {
               <ShieldCheck size={14} color="#059669" />
               <Text style={styles.securityText}>PDPA SECURITY VERIFIED</Text>
             </View>
-            <Text style={styles.copy}>Copyright © 2023 - 2025 FORT KRIT SIWARA HOSPTIAL.</Text>
+            <Text style={styles.copy}>Copyright © 2023 - 2026 FORT KRIT SIWARA HOSPTIAL.</Text>
             <Text style={styles.copySub}>มณฑลทหารบกที่ 29 | โรงพยาบาลค่ายกฤษณ์สีวะรา</Text>
           </View>
 

@@ -12,7 +12,11 @@
       "distribution": "internal"
     },
     "production": {
-      "autoIncrement": true
+      "autoIncrement": true,
+      "env": {
+        "EXPO_PUBLIC_API_URL_PROD": "https://ksvrhospital.rta.mi.th/krit-siwara_smart_heart/api",
+        "EXPO_PUBLIC_GOOGLE_PLACES_API_KEY": "AIzaSyC7F_mST9Xc2UrLNyw5cMbMAtg5VXUzvU8"
+      }
     }
   },
   "submit": {

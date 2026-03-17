@@ -12,28 +12,20 @@
       "backgroundColor": "#FFFFFF"
     },
     "userInterfaceStyle": "light",
-    "newArchEnabled": true,
-    "jsEngine": "hermes",
     "ios": {
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "แอปพลิเคชันต้องการเข้าถึงตำแหน่งพิกัดขณะใช้งาน เพื่อให้ทีมแพทย์สามารถส่งรถพยาบาลไปช่วยเหลือคุณได้อย่างแม่นยำในกรณีเกิดเหตุฉุกเฉิน",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "แอปพลิเคชันต้องการเข้าถึงตำแหน่งพิกัดตลอดเวลา เพื่อติดตามตำแหน่งของคุณแบบเรียลไทม์ขณะที่รถพยาบาลกำลังเดินทางไปช่วยเหลือ แม้ในขณะที่แอปพลิเคชันทำงานอยู่เบื้องหลัง",
         "NSLocationAlwaysUsageDescription": "แอปพลิเคชันต้องการเข้าถึงตำแหน่งพิกัดตลอดเวลาเพื่อประสิทธิภาพสูงสุดในการช่วยชีวิตผู้ป่วยฉุกเฉิน",
-        "NSFaceIDUsageDescription": "ขออนุญาตใช้ Face ID เพื่อยืนยันตัวตนก่อนเข้าถึงข้อมูลสุขภาพและข้อมูลส่วนบุคคลของผู้ป่วย",
-        "UIBackgroundModes": [
-          "location",
-          "remote-notification"
-        ]
+        "NSFaceIDUsageDescription": "ขออนุญาตใช้ Face ID เพื่อยืนยันตัวตนก่อนเข้าถึงข้อมูลสุขภาพและข้อมูลส่วนบุคคลของผู้ป่วย"
       },
       "splash": {
         "tabletImage": "./assets/splash-icon.png"
       },
       "bundleIdentifier": "com.ksvr.acsfasttrack",
-      "buildNumber": "1",
       "supportsTablet": true,
       "config": {
-        "usesNonExemptEncryption": false,
-        "googleMapsApiKey": "AIzaSyC7F_mST9Xc2UrLNyw5cMbMAtg5VXUzvU8"
+        "usesNonExemptEncryption": false
       }
     },
     "android": {
@@ -83,8 +75,8 @@
         }
       ],
       "expo-notifications",
-      "expo-maps",
-      "expo-image"
+      "expo-image",
+      "expo-font"
     ],
     "extra": {
       "eas": {

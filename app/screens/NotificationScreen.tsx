@@ -3,17 +3,19 @@ import {
   View, 
   StyleSheet, 
   TouchableOpacity, 
-  Modal, 
   ScrollView, 
   StatusBar,
   DeviceEventEmitter,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute } from '@react-navigation/native';
-import { ChevronLeft, X, AlertTriangle, Calendar, FileHeart } from 'lucide-react-native';
+import { ChevronLeft, AlertTriangle, Calendar, FileHeart } from 'lucide-react-native';
 import { AppText } from '../components/AppText'; 
 import { FlashList } from "@shopify/flash-list";
-import * as Notifications from 'expo-notifications'; // ✅ 1. Import เพิ่ม
+import * as Notifications from 'expo-notifications'; 
+
+// ✅ 1. Import Reanimated สำหรับทำ Slide Animation
+import Animated, { SlideInRight, SlideOutRight } from 'react-native-reanimated';
 
 // Helper เลือกไอคอน
 const getNotifIcon = (type: string) => {
@@ -30,41 +32,34 @@ const NotificationScreen = () => {
     const navigation = useNavigation();
     const route = useRoute<any>();
     
-    // รับข้อมูลจากหน้า Home (เป็นค่าเริ่มต้น)
     const [notificationList, setNotificationList] = useState(route.params?.notifications || []);
     const [selectedNotification, setSelectedNotification] = useState<any>(null);
-    const notificationListRef = useRef(notificationList); // Ref ช่วยจำค่าล่าสุด
+    const notificationListRef = useRef(notificationList);
 
     useEffect(() => {
         const initialId = route.params?.initialId;
         if (initialId) {
-            // หาข้อความที่มี ID ตรงกับที่กดมา
             const targetNotif = notificationList.find((n: any) => n.id === initialId);
             if (targetNotif) {
-                // 1. เปิด Modal
                 setSelectedNotification(targetNotif);
                 
-                // 2. อัปเดตสถานะเป็นอ่านแล้ว (ในกรณีที่ยังไม่ได้แก้จากหน้า Home)
                 const updatedList = notificationList.map((n: any) => 
                     n.id === initialId ? { ...n, read: true } : n
                 );
                 setNotificationList(updatedList);
             }
         }
-    }, [route.params?.initialId]); // ทำงานเมื่อมีการเปลี่ยนค่า initialId
-    // Sync Ref กับ State เสมอ
+    }, [route.params?.initialId]); 
+
     useEffect(() => {
         notificationListRef.current = notificationList;
     }, [notificationList]);
 
-    // ✅ 2. เพิ่ม useEffect ดักฟังข้อความใหม่ (Real-time)
     useEffect(() => {
-        // Listener: เมื่อมีข้อความใหม่เข้ามาขณะเปิดหน้านี้อยู่
         const subscription = Notifications.addNotificationReceivedListener(notification => {
             const content = notification.request.content;
             const identifier = notification.request.identifier;
 
-            // เช็คว่ามีอยู่แล้วหรือยัง (กันซ้ำ)
             const isDuplicate = notificationListRef.current.some((n: any) => n.id === identifier);
             if (isDuplicate) return;
 
@@ -75,22 +70,20 @@ const NotificationScreen = () => {
             }) + ' น.';
 
             const newNotif = {
-                id: identifier, // ใช้ ID จริง
+                id: identifier, 
                 type: content.data?.type || 'info',
                 title: content.title || 'การแจ้งเตือนใหม่',
                 body: content.body || '',
                 time: timeString,
-                read: false // เข้ามาใหม่ยังไม่ได้อ่าน
+                read: false 
             };
 
-            // เพิ่มเข้า list ทันที
-            setNotificationList(prev => [newNotif, ...prev]);
+            setNotificationList((prev: any) => [newNotif, ...prev]);
         });
 
         return () => subscription.remove();
     }, []);
 
-    // ฟังก์ชันเมื่อกดอ่าน
     const handleNotificationPress = (item: any) => {
         const updatedList = notificationList.map((n: any) => 
                 n.id === item.id ? { ...n, read: true } : n
@@ -98,7 +91,6 @@ const NotificationScreen = () => {
         setNotificationList(updatedList);
         setSelectedNotification(item);
 
-        // ✅ 2. ส่งสัญญาณกลับไปบอก HomeScreen ว่า "ID นี้อ่านแล้วนะ"
         DeviceEventEmitter.emit('notificationRead', item.id);
     };
 
@@ -116,12 +108,10 @@ const NotificationScreen = () => {
                 activeOpacity={0.7}
                 onPress={() => handleNotificationPress(item)}
             >
-                {/* ไอคอน */}
                 <View style={[styles.iconBox, { backgroundColor: style.bg }]}>
                     <IconComponent size={24} color={style.color} />
                 </View>
                 
-                {/* เนื้อหา */}
                 <View style={{ flex: 1 }}>
                     <View style={styles.itemHeader}>
                         <AppText style={[styles.itemTitle, !isRead && styles.boldText]} numberOfLines={1}>
@@ -149,6 +139,7 @@ const NotificationScreen = () => {
         <SafeAreaView style={styles.container}>
             <StatusBar barStyle="dark-content" />
             
+            {/* --- หน้าจอหลัก (รายการแจ้งเตือน) --- */}
             <View style={styles.header}>
                 <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
                     <ChevronLeft size={28} color="#1E293B" />
@@ -160,7 +151,7 @@ const NotificationScreen = () => {
             <FlashList
                 data={notificationList}
                 renderItem={renderItem}
-                estimatedItemSize={80} // ระบุความสูงคร่าวๆ ของแต่ละรายการ ช่วยให้คำนวณเร็วขึ้น
+                estimatedItemSize={80} 
                 keyExtractor={(item: any) => item.id.toString()}
                 contentContainerStyle={{ padding: 16 }}
                 ListEmptyComponent={
@@ -171,43 +162,40 @@ const NotificationScreen = () => {
                 }
             />
 
-            <Modal
-                transparent={true}
-                visible={!!selectedNotification}
-                animationType="fade"
-                onRequestClose={() => setSelectedNotification(null)}
-            >
-                <View style={styles.modalOverlay}>
-                    <View style={styles.modalContent}>
-                        {selectedNotification && (
-                            <>
-                                <View style={styles.modalHeaderRow}>
-                                    <View style={[styles.iconBox, { backgroundColor: getNotifIcon(selectedNotification.type).bg }]}>
-                                        {(() => {
-                                            const Icon = getNotifIcon(selectedNotification.type).icon;
-                                            return <Icon size={24} color={getNotifIcon(selectedNotification.type).color} />;
-                                        })()}
-                                    </View>
-                                    <TouchableOpacity onPress={() => setSelectedNotification(null)} style={styles.closeBtn}>
-                                        <X size={22} color="#94A3B8" />
-                                    </TouchableOpacity>
-                                </View>
-
-                                <ScrollView style={{ maxHeight: 400 }}>
-                                    <AppText style={styles.modalTitle}>{selectedNotification.title}</AppText>
-                                    <AppText style={styles.modalTime}>{selectedNotification.time}</AppText>
-                                    <View style={styles.divider} />
-                                    <AppText style={styles.modalBody}>{selectedNotification.body}</AppText>
-                                </ScrollView>
-
-                                <TouchableOpacity style={styles.okButton} onPress={() => setSelectedNotification(null)}>
-                                    <AppText style={styles.okText}>ปิดหน้าต่าง</AppText>
-                                </TouchableOpacity>
-                            </>
-                        )}
+            {/* ✅ 2. หน้าต่างรายละเอียด (ใช้ Reanimated Slide ทับเต็มจอ) */}
+            {selectedNotification && (
+                <Animated.View 
+                    entering={SlideInRight.duration(250)} 
+                    exiting={SlideOutRight.duration(250)}
+                    style={styles.detailOverlayView}
+                >
+                    {/* Header ของหน้ารายละเอียด */}
+                    <View style={styles.header}>
+                        <TouchableOpacity onPress={() => setSelectedNotification(null)} style={styles.backButton}>
+                            <ChevronLeft size={28} color="#1E293B" />
+                        </TouchableOpacity>
+                        <AppText style={styles.headerTitle}>รายละเอียด</AppText>
+                        <View style={{ width: 28 }} /> 
                     </View>
-                </View>
-            </Modal>
+
+                    {/* เนื้อหา */}
+                    <ScrollView contentContainerStyle={styles.detailContent}>
+                        <View style={[styles.detailIconCircle, { backgroundColor: getNotifIcon(selectedNotification.type).bg }]}>
+                            {(() => {
+                                const Icon = getNotifIcon(selectedNotification.type).icon;
+                                return <Icon size={32} color={getNotifIcon(selectedNotification.type).color} />;
+                            })()}
+                        </View>
+
+                        <AppText style={styles.detailTitle}>{selectedNotification.title}</AppText>
+                        <AppText style={styles.detailTime}>{selectedNotification.time}</AppText>
+                        
+                        <View style={styles.divider} />
+                        
+                        <AppText style={styles.detailBody}>{selectedNotification.body}</AppText>
+                    </ScrollView>
+                </Animated.View>
+            )}
         </SafeAreaView>
     );
 };
@@ -228,16 +216,51 @@ const styles = StyleSheet.create({
     readText: { fontSize: 10, color: '#94A3B8' },
     emptyContainer: { alignItems: 'center', marginTop: 100 },
     emptyText: { marginTop: 10, color: '#94A3B8' },
-    modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 20 },
-    modalContent: { width: '100%', maxWidth: 340, backgroundColor: 'white', borderRadius: 24, padding: 24, shadowColor: "#000", shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.15, shadowRadius: 20, elevation: 10 },
-    modalHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 15 },
-    closeBtn: { padding: 8, backgroundColor: '#F1F5F9', borderRadius: 20 },
-    modalTitle: { fontSize: 18, fontWeight: 'bold', color: '#1E293B', marginBottom: 6 },
-    modalTime: { fontSize: 13, color: '#94A3B8', marginBottom: 15 },
-    divider: { height: 1, backgroundColor: '#F1F5F9', marginBottom: 15 },
-    modalBody: { fontSize: 15, color: '#334155', lineHeight: 24 },
-    okButton: { marginTop: 25, backgroundColor: '#F1F5F9', paddingVertical: 12, borderRadius: 12, alignItems: 'center' },
-    okText: { color: '#475569', fontWeight: 'bold', fontSize: 15 }
+    
+    // ✅ 3. สไตล์สำหรับหน้าต่าง Slide 
+    detailOverlayView: {
+        ...StyleSheet.absoluteFillObject, // คลุมเต็มพื้นที่หน้าจอเป๊ะๆ
+        backgroundColor: '#FFFFFF',
+        zIndex: 10, // ให้อยู่เลเยอร์บนสุด
+    },
+    detailContent: {
+        padding: 24,
+        alignItems: 'center', // จัดให้อยู่ตรงกลางนิดหน่อย
+    },
+    detailIconCircle: {
+        width: 70, 
+        height: 70, 
+        borderRadius: 35, 
+        justifyContent: 'center', 
+        alignItems: 'center', 
+        marginBottom: 20,
+        marginTop: 10,
+    },
+    detailTitle: { 
+        fontSize: 22, 
+        fontWeight: 'bold', 
+        color: '#1E293B', 
+        marginBottom: 8,
+        textAlign: 'center'
+    },
+    detailTime: { 
+        fontSize: 14, 
+        color: '#94A3B8', 
+        marginBottom: 20 
+    },
+    divider: { 
+        height: 1, 
+        backgroundColor: '#F1F5F9', 
+        marginBottom: 20,
+        width: '100%' 
+    },
+    detailBody: { 
+        fontSize: 16, 
+        color: '#334155', 
+        lineHeight: 26,
+        width: '100%',
+        textAlign: 'left' // ให้เนื้อหาชิดซ้ายอ่านง่าย
+    },
 });
 
 export default NotificationScreen;

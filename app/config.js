@@ -15,7 +15,7 @@ const HOSPITAL_COORDS = {
 export { HOSPITAL_COORDS };
 // Logic การเลือก URL อัตโนมัติ
 // __DEV__ เป็นตัวแปรพิเศษของ React Native ที่เป็น true เมื่อเรา debug อยู่
-// export const API_URL = __DEV__ ? PROD_URL : PROD_URL; 
-export const API_URL = __DEV__ ? PROD_URL : PROD_URL;
+export const API_URL = process.env.EXPO_PUBLIC_API_URL_PROD; 
+// export const API_URL = __DEV__ ? PROD_URL : PROD_URL;
 // หมายเหตุ: ถ้าช่วงนี้อยากใช้ Server จริงตลอด ให้ใส่ PROD_URL ทั้งคู่ไปก่อนได้ครับ
 
