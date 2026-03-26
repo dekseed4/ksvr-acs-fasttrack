@@ -1,22 +1,51 @@
 import React from 'react';
-import { View, StyleSheet, ScrollView, TouchableOpacity, Linking } from 'react-native';
-import { AlertTriangle, ShieldCheck, Phone, Activity } from 'lucide-react-native';
+import { View, StyleSheet, ScrollView, TouchableOpacity, Linking, Alert } from 'react-native';
+// เพิ่ม BookOpen เข้ามาสำหรับไอคอนแหล่งอ้างอิง
+import { AlertTriangle, ShieldCheck, Phone, Activity, BookOpen } from 'lucide-react-native';
 import { AppText } from '../components/AppText';
 import { Image } from 'expo-image';
 
 const KnowledgeScreen = () => {
 
-    // ฟังก์ชันสำหรับกดโทรออกฉุกเฉิน
-    const handleCallEmergency = () => {
-        Linking.openURL('tel:1669');
+    // 🌟 1. ฟังก์ชันป้องกันแครชตอนโทรออก (สำหรับ iPad / Simulator)
+    const handleCallEmergency = async () => {
+        const url = 'tel:1669';
+        try {
+            const supported = await Linking.canOpenURL(url);
+            if (supported) {
+                await Linking.openURL(url);
+            } else {
+                Alert.alert(
+                    "ไม่รองรับการโทร", 
+                    "อุปกรณ์ของคุณไม่สามารถทำการโทรออกได้ (เช่น iPad) กรุณาใช้โทรศัพท์มือถือโทร 1669 ทันที!"
+                );
+            }
+        } catch (error) {
+            console.log("Call error", error);
+            Alert.alert("เกิดข้อผิดพลาด", "ไม่สามารถเปิดระบบโทรศัพท์ได้");
+        }
+    };
+
+    // 🌟 2. ฟังก์ชันป้องกันแครชตอนเปิดเว็บภายนอก
+    const handleOpenLink = async (url) => {
+        try {
+            const supported = await Linking.canOpenURL(url);
+            if (supported) {
+                await Linking.openURL(url);
+            } else {
+                Alert.alert("เกิดข้อผิดพลาด", "ไม่สามารถเปิดลิงก์นี้ได้ในอุปกรณ์ของคุณ");
+            }
+        } catch (error) {
+            console.log("Link error", error);
+            Alert.alert("เกิดข้อผิดพลาด", "เบราว์เซอร์ไม่พร้อมใช้งาน");
+        }
     };
 
     return (
         <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
             
-            {/* Header Image (ใส่รูปปกสวยๆ) */}
+            {/* Header Image */}
             <View style={styles.headerContainer}>
-                {/* คุณสามารถเปลี่ยน uri เป็นรูปจาก Project ของคุณเองได้ */}
                 <Image 
                     cachePolicy="disk" 
                     source={{ uri: 'https://img.freepik.com/free-vector/human-heart-concept-illustration_114360-8354.jpg' }} 
@@ -47,6 +76,7 @@ const KnowledgeScreen = () => {
             {/* ส่วนที่ 2: ปุ่มฉุกเฉิน */}
             <View style={[styles.card, styles.emergencyCard]}>
                 <AppText style={styles.emergencyAppText}>พบผู้ป่วยหรือมีอาการฉุกเฉิน?</AppText>
+                {/* 🌟 เปลี่ยนไปใช้ handleCallEmergency */}
                 <TouchableOpacity style={styles.callButton} onPress={handleCallEmergency}>
                     <Phone color="white" size={24} style={{ marginRight: 10 }} />
                     <AppText style={styles.callButtonAppText}>โทร 1669 ทันที</AppText>
@@ -80,6 +110,33 @@ const KnowledgeScreen = () => {
                         title="ทานยาตรงเวลา" 
                         desc="ห้ามหยุดยาเองโดยเด็ดขาด แม้อาการจะดีขึ้นแล้ว" 
                     />
+                </View>
+            </View>
+
+            <View style={styles.card}>
+                <View style={styles.cardHeader}>
+                    <BookOpen color="#1976D2" size={24} />
+                    <AppText style={styles.cardTitle}>แหล่งข้อมูลอ้างอิง</AppText>
+                </View>
+                <View style={styles.listContainer}>
+                    {/* 🌟 เปลี่ยนไปใช้ handleOpenLink */}
+                    <TouchableOpacity onPress={() => handleOpenLink('https://www.thaiheart.org/')}>
+                        <AppText style={[styles.referenceText, styles.linkText]}>
+                            1. แนวทางการรักษาผู้ป่วยโรคหลอดเลือดหัวใจตีบเฉียบพลัน (ACS) - สมาคมแพทย์โรคหัวใจแห่งประเทศไทย ในพระบรมราชูปถัมภ์
+                        </AppText>
+                    </TouchableOpacity>
+                    
+                    <TouchableOpacity onPress={() => handleOpenLink('https://www.niems.go.th/')}>
+                        <AppText style={[styles.referenceText, styles.linkText]}>
+                            2. คู่มือประชาชน การแพทย์ฉุกเฉิน 1669 - สถาบันการแพทย์ฉุกเฉินแห่งชาติ (สพฉ.)
+                        </AppText>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity onPress={() => handleOpenLink('https://ddc.moph.go.th/')}>
+                        <AppText style={[styles.referenceText, styles.linkText]}>
+                            3. แนวทางการป้องกันโรคหัวใจและหลอดเลือด - กรมควบคุมโรค กระทรวงสาธารณสุข
+                        </AppText>
+                    </TouchableOpacity>
                 </View>
             </View>
 
@@ -128,7 +185,7 @@ const styles = StyleSheet.create({
     },
     headerOverlay: {
         ...StyleSheet.absoluteFillObject,
-        backgroundColor: 'rgba(0,0,0,0.4)', // สีดำโปร่งแสงเพื่อให้ตัวหนังสือชัด
+        backgroundColor: 'rgba(0,0,0,0.4)',
     },
     headerTitle: {
         fontSize: 28,
@@ -142,7 +199,6 @@ const styles = StyleSheet.create({
         marginTop: 16,
         padding: 20,
         borderRadius: 12,
-        // Shadow
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.1,
@@ -188,9 +244,8 @@ const styles = StyleSheet.create({
         flex: 1,
         lineHeight: 22,
     },
-    // Emergency Card Styles
     emergencyCard: {
-        backgroundColor: '#FFEBEE', // สีพื้นหลังแดงอ่อนๆ
+        backgroundColor: '#FFEBEE',
         alignItems: 'center',
         borderWidth: 1,
         borderColor: '#FFCDD2',
@@ -224,7 +279,6 @@ const styles = StyleSheet.create({
         fontSize: 12,
         color: '#D32F2F',
     },
-    // Prevention Styles
     preventionContainer: {
         marginBottom: 12,
         paddingBottom: 8,
@@ -241,6 +295,16 @@ const styles = StyleSheet.create({
         fontSize: 14,
         color: '#555',
         paddingLeft: 12,
+    },
+    referenceText: {
+        fontSize: 13,
+        color: '#666',
+        marginBottom: 8,
+        lineHeight: 20,
+    },
+    linkText: {
+        color: '#1976D2',
+        textDecorationLine: 'underline',
     },
     footer: {
         padding: 30,

@@ -7,6 +7,8 @@ import {
 import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import * as Location from 'expo-location';
 import BottomSheet, { BottomSheetFlatList, BottomSheetView } from '@gorhom/bottom-sheet';
+// 🌟 1. นำเข้า GestureHandlerRootView
+import { GestureHandlerRootView } from 'react-native-gesture-handler'; 
 import { Navigation, Phone, MapPin, Star, Trophy } from 'lucide-react-native';
 import { useLoading } from '../context/LoadingContext';
 import { useTheme } from '../context/ThemeContext';
@@ -29,7 +31,6 @@ const MAIN_HOSPITAL = {
 
 const { height: screenHeight } = Dimensions.get('window');
 
-// 🌟 1. ย้าย HospitalMarker ออกมาไว้ข้างนอก! เพื่อไม่ให้ React ทำลายมันทิ้งเวลาหน้าจอรีเฟรช
 const HospitalMarker = ({ hospital, isSelected, fontScale, onPress }: any) => {
     const [trackChanges, setTrackChanges] = useState(true);
 
@@ -41,6 +42,9 @@ const HospitalMarker = ({ hospital, isSelected, fontScale, onPress }: any) => {
 
     const markerBgColor = hospital.isMain ? '#3B82F6' : (isSelected ? '#EF4444' : '#F59E0B');
     const baseSize = 16 * fontScale;
+
+    // 🌟 2. ดักแครชกรณีไม่มีพิกัด
+    if (!hospital.latitude || !hospital.longitude) return null;
 
     return (
         <Marker
@@ -84,7 +88,6 @@ const HospitalMarker = ({ hospital, isSelected, fontScale, onPress }: any) => {
     );
 };
 
-// 🌟 2. ตัวหน้าจอหลักอยู่ตรงนี้
 const HospitalMapScreen = () => {
     const [location, setLocation] = useState<Location.LocationObject | null>(null);
     const [hospitals, setHospitals] = useState<any[]>([]);
@@ -101,6 +104,42 @@ const HospitalMapScreen = () => {
         fetchNearbyHospitals();
     }, []);
 
+    const handleCall = async (phoneNumber: string) => {
+        const url = `tel:${phoneNumber}`;
+        try {
+            const supported = await Linking.canOpenURL(url);
+            if (supported) {
+                await Linking.openURL(url);
+            } else {
+                Alert.alert("ไม่รองรับการโทร", "อุปกรณ์นี้ไม่สามารถโทรออกได้ (เช่น iPad) กรุณาใช้โทรศัพท์มือถือในการติดต่อ");
+            }
+        } catch (error) {
+            console.log("Call error", error);
+            Alert.alert("เกิดข้อผิดพลาด", "ไม่สามารถเชื่อมต่อระบบโทรศัพท์ได้");
+        }
+    };
+
+    const handleNavigation = async (lat: number, lng: number) => {
+        const iosUrl = `maps://app?daddr=${lat},${lng}`;
+        const androidUrl = `google.navigation:q=${lat},${lng}`;
+        const webFallbackUrl = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
+
+        try {
+            if (Platform.OS === 'ios') {
+                const supported = await Linking.canOpenURL(iosUrl);
+                if (supported) {
+                    await Linking.openURL(iosUrl);
+                } else {
+                    await Linking.openURL(webFallbackUrl); 
+                }
+            } else {
+                await Linking.openURL(androidUrl);
+            }
+        } catch (error) {
+            Linking.openURL(webFallbackUrl);
+        }
+    };
+
     const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
         const R = 6371;
         const dLat = (lat2 - lat1) * (Math.PI / 180);
@@ -111,25 +150,21 @@ const HospitalMapScreen = () => {
     };
 
     const fitToMarkers = useCallback((userLoc: any, hospitalLoc: any) => {
-        if (!userLoc || !hospitalLoc || !mapRef.current) return;
+        // 🌟 3. เพิ่มการป้องกันการโยนค่าพิกัดผิดพลาดให้แผนที่ (ดัก NaN Crash)
+        if (!userLoc?.coords?.latitude || !userLoc?.coords?.longitude || !hospitalLoc?.latitude || !hospitalLoc?.longitude || !mapRef.current) return;
 
-        // 1. คำนวณระยะห่างระหว่าง 2 จุด (คนไข้ กับ รพ.)
         const latDelta = Math.abs(userLoc.coords.latitude - hospitalLoc.latitude);
         const lonDelta = Math.abs(userLoc.coords.longitude - hospitalLoc.longitude);
-
-        // 2. หาจุดกึ่งกลาง
         const midLat = (userLoc.coords.latitude + hospitalLoc.latitude) / 2;
         const midLon = (userLoc.coords.longitude + hospitalLoc.longitude) / 2;
-
-        // 🌟 3. ทริคดันกล้อง: ลบค่าละติจูดลงนิดหน่อย เพื่อให้กล้องแพนต่ำลง 
-        // ส่งผลให้หมุดทั้ง 2 เด้งขึ้นไปอยู่ด้านบนจอพ้น Bottom Sheet พอดี
         const adjustedLat = midLat - (latDelta * 0.25) - 0.005;
 
-        // 4. สั่งซูมแบบสมูท (animateToRegion)
+        // เช็กขั้นสุดท้ายเพื่อความมั่นใจ
+        if (isNaN(adjustedLat) || isNaN(midLon)) return;
+
         mapRef.current.animateToRegion({
             latitude: adjustedLat,
             longitude: midLon,
-            // กำหนดระดับการซูม (ป้องกันไม่ให้ซูมใกล้เกินไปถ้าอยู่ใกล้ รพ. มาก)
             latitudeDelta: Math.max(latDelta * 1.6, 0.02),
             longitudeDelta: Math.max(lonDelta * 1.6, 0.02),
         }, 1000);
@@ -139,7 +174,10 @@ const HospitalMapScreen = () => {
         setIsLoading(true);
         try {
             let { status } = await Location.requestForegroundPermissionsAsync();
-            if (status !== 'granted') return;
+            if (status !== 'granted') {
+                setIsLoading(false);
+                return;
+            }
             let userLoc = await Location.getCurrentPositionAsync({});
             setLocation(userLoc);
 
@@ -181,7 +219,12 @@ const HospitalMapScreen = () => {
                 setSelectedHospital(mainWithDist);
                 setTimeout(() => fitToMarkers(userLoc, mainWithDist), 1000);
             }
-        } catch (e) { console.error(e); } finally { setIsLoading(false); }
+        } catch (e) { 
+            console.error(e); 
+            Alert.alert("ไม่สามารถระบุตำแหน่งได้", "กรุณาตรวจสอบการตั้งค่า GPS ของคุณ");
+        } finally { 
+            setIsLoading(false); 
+        }
     };
 
     const renderHospitalItem = ({ item }: { item: any }) => {
@@ -219,7 +262,7 @@ const HospitalMapScreen = () => {
                     <View style={styles.itemActions}>
                         <TouchableOpacity 
                             style={[styles.btnAction, { backgroundColor: 'rgba(255,255,255,0.2)' }]}
-                            onPress={() => Linking.openURL(`tel:${item.phone || '1669'}`)}
+                            onPress={() => handleCall(item.phone || '1669')}
                         >
                             <Phone color="white" size={18} />
                             <AppText style={styles.btnText}>โทรหา</AppText>
@@ -227,13 +270,7 @@ const HospitalMapScreen = () => {
                         
                         <TouchableOpacity 
                             style={[styles.btnAction, { backgroundColor: 'white' }]}
-                            onPress={() => {
-                                const url = Platform.select({
-                                    ios: `maps://app?daddr=${item.latitude},${item.longitude}`,
-                                    android: `google.navigation:q=${item.latitude},${item.longitude}`
-                                });
-                                Linking.openURL(url!);
-                            }}
+                            onPress={() => handleNavigation(item.latitude, item.longitude)}
                         >
                             <Navigation color="#EF4444" size={18} />
                             <AppText style={[styles.btnText, { color: '#EF4444' }]}>นำทาง</AppText>
@@ -244,8 +281,9 @@ const HospitalMapScreen = () => {
         );
     };
 
+    // 🌟 4. เปลี่ยนเป็น <GestureHandlerRootView>
     return (
-        <View style={styles.container}>
+        <GestureHandlerRootView style={styles.container}>
             <MapView
                 ref={mapRef}
                 style={StyleSheet.absoluteFillObject}
@@ -255,7 +293,6 @@ const HospitalMapScreen = () => {
             >
                 {hospitals.map((h) => (
                     <HospitalMarker
-                        // 🌟 3. ใส่ key ให้ชัวร์ 100% ว่าถ้าเลือกปุ๊บ มันจะบังคับเรนเดอร์หมุดใหม่ปั๊บ
                         key={`${h.id}-${h.id === selectedHospital?.id ? 'active' : 'inactive'}`}
                         hospital={h}
                         isSelected={h.id === selectedHospital?.id}
@@ -273,13 +310,15 @@ const HospitalMapScreen = () => {
                     style={styles.userLocationBar}
                     activeOpacity={0.8}
                     onPress={() => {
-                        // พอกดปุ่มนี้ ให้กล้องซูมกลับมาที่พิกัดผู้ใช้
-                        mapRef.current?.animateToRegion({
-                            latitude: location.coords.latitude,
-                            longitude: location.coords.longitude,
-                            latitudeDelta: 0.02,
-                            longitudeDelta: 0.02,
-                        }, 1000);
+                        // 🌟 ดักเช็กให้ชัวร์ก่อนซูมพิกัด
+                        if(location?.coords?.latitude && location?.coords?.longitude) {
+                            mapRef.current?.animateToRegion({
+                                latitude: location.coords.latitude,
+                                longitude: location.coords.longitude,
+                                latitudeDelta: 0.02,
+                                longitudeDelta: 0.02,
+                            }, 1000);
+                        }
                     }}
                 >
                     <View style={styles.pulseDot}>
@@ -312,7 +351,7 @@ const HospitalMapScreen = () => {
                     }
                 />
             </BottomSheet>
-        </View>
+        </GestureHandlerRootView>
     );
 };
 
@@ -371,19 +410,15 @@ const styles = StyleSheet.create({
         shadowOpacity: 0.3,
         shadowRadius: 2,
         elevation: 3,
-        // 🌟 ลบ maxWidth: 120 ออกไปแล้วครับ มันจะขยายตามอักษรได้อิสระเลย
     },
     markerLabelText: {
         color: 'white',
         fontWeight: 'bold',
         textAlign: 'center',
     },
-    // ... (สไตล์เดิมของคุณ) ...
-    
-    // 🌟 สไตล์สำหรับบาร์ "คุณอยู่ตรงนี้"
     userLocationBar: {
         position: 'absolute',
-        top: Platform.OS === 'ios' ? 60 : 40, // เว้นระยะจากขอบจอบน
+        top: Platform.OS === 'ios' ? 60 : 40, 
         alignSelf: 'center',
         backgroundColor: 'white',
         paddingHorizontal: 16,
@@ -402,7 +437,7 @@ const styles = StyleSheet.create({
         width: 16,
         height: 16,
         borderRadius: 8,
-        backgroundColor: 'rgba(59, 130, 246, 0.2)', // สีฟ้าอ่อนๆ ทำเป็นขอบเรืองแสง
+        backgroundColor: 'rgba(59, 130, 246, 0.2)', 
         justifyContent: 'center',
         alignItems: 'center',
     },
@@ -410,7 +445,7 @@ const styles = StyleSheet.create({
         width: 8,
         height: 8,
         borderRadius: 4,
-        backgroundColor: '#3B82F6', // สีฟ้าเข้มให้เหมือนจุดแผนที่ของ Apple
+        backgroundColor: '#3B82F6', 
     },
     userLocationText: {
         fontSize: 14,

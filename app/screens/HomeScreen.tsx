@@ -67,7 +67,7 @@ import {
   PhoneCall, 
   Info as InfoIcon,
   Check,
-  Eye,    
+  Eye,   
   EyeOff 
 } from 'lucide-react-native';
 import Constants from 'expo-constants';
@@ -83,8 +83,8 @@ import SettingsMenu from '../components/SettingsMenu';
 
 const HomeScreen = () => {
 
-    const { setUserData, onLogout, authState } = useAuth(); // ดึง Token และฟังก์ชัน Logout
-    const user = authState?.user; // ข้อมูลโปรไฟล์ผู้ใช้
+    const { setUserData, onLogout, authState } = useAuth();
+    const user = authState?.user;
 
     const appState = useRef(AppState.currentState);
 
@@ -103,12 +103,11 @@ const HomeScreen = () => {
 
     // Navigation & UI States
     const [isCalling, setIsCalling] = useState(false);
-    const [isSubmitting, setIsSubmitting] = useState(false); // สถานะขณะส่งข้อมูลไปยัง Server
-    const [showInAppMap, setShowInAppMap] = useState(false); // State สำหรับเปิด/ปิดแผนที่ในแอป
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [showInAppMap, setShowInAppMap] = useState(false);
     
     // --- Settings Modal State Management ---
     const settingsSheetRef = useRef(null);
-    // Snap points: 90% ของหน้าจอ
     const snapPoints = useMemo(() => ['90%'], []);
     const [settingsView, setSettingsView] = useState('main'); 
 
@@ -118,11 +117,8 @@ const HomeScreen = () => {
 
     // --- Biometric Authentication State ---
     const [biometricPermission, setBiometricPermission] = useState(null);
-    // ✅ [เพิ่ม] ตัวแปรเก็บเวลาที่สแกนนิ้วผ่านล่าสุด (เริ่มต้นเป็น 0)
     const lastAuthTime = useRef(0);
-    // ✅ [เพิ่ม] ระยะเวลาที่จำค่า (5 นาที = 300000 ms)
     const AUTH_GRACE_PERIOD = 5 * 60 * 1000;
-    // --- Image Loading State ---
     const [imageLoadError, setImageLoadError] = useState(false);
 
     // --- Password Change States ---
@@ -136,7 +132,6 @@ const HomeScreen = () => {
     const [showNewPassword, setShowNewPassword] = useState(false);
     const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
-    // --- เก็บ ID รายการฉุกเฉินปัจจุบัน ---
     const [activeEmergencyId, setActiveEmergencyId] = useState(null);
 
     // --- Profile & Loading States ---
@@ -156,21 +151,34 @@ const HomeScreen = () => {
     const watchSubscription = useRef(null); 
     const pulseAnim = useRef(new Animated.Value(1)).current; 
     const scaleAnim = useRef(new Animated.Value(1)).current;
-    const blinkAnim = useRef(new Animated.Value(0.4)).current; // สำหรับสถานะ Live GPS
+    const blinkAnim = useRef(new Animated.Value(0.4)).current; 
 
-    const HOLD_DURATION = 1000; // 1 วินาที
+    const HOLD_DURATION = 1000;
     const radius = 90;
     const strokeWidth = 8;
     const circumference = 2 * Math.PI * radius;
 
     const changeSettingsView = (newView) => {
-        // สั่งให้ Layout (ความสูง/กว้าง) เปลี่ยนแบบ Smooth (Ease In Ease Out)
         LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
         setSettingsView(newView);
     };
 
-   
-    
+    // 🌟 ฟังก์ชันจัดการการโทรออกอย่างปลอดภัยบน iPad
+    const handleCall = async (phoneNumber) => {
+        const url = `tel:${phoneNumber}`;
+        try {
+            const supported = await Linking.canOpenURL(url);
+            if (supported) {
+                await Linking.openURL(url);
+            } else {
+                Alert.alert("ไม่รองรับการโทร", "อุปกรณ์นี้ไม่สามารถทำการโทรออกได้ (เช่น iPad) กรุณาใช้โทรศัพท์มือถือในการติดต่อ");
+            }
+        } catch (error) {
+            console.log("Call error", error);
+            Alert.alert("เกิดข้อผิดพลาด", "ไม่สามารถเชื่อมต่อระบบโทรศัพท์ได้");
+        }
+    };
+
     // ฟังก์ชันลงทะเบียนรับ Push Notifications
     async function registerForPushNotificationsAsync() {
         let token;
@@ -187,28 +195,28 @@ const HomeScreen = () => {
         const { status: existingStatus } = await Notifications.getPermissionsAsync();
         let finalStatus = existingStatus;
         
-        // ถ้ายังไม่มีสิทธิ์ ให้ขอสิทธิ์
         if (existingStatus !== 'granted') {
             const { status } = await Notifications.requestPermissionsAsync();
             finalStatus = status;
         }
         
         if (finalStatus !== 'granted') {
-            alert('Failed to get push token for push notification!');
+            console.log('Failed to get push token for push notification!');
             return;
         }
 
-        // ดึง Token (ต้องใช้ Project ID จาก app.json / eas.json ถ้าใช้ EAS Build)
-        // แต่ถ้า Test บน Expo Go ปกติไม่ต้องใส่ projectId ก็ได้
-        token = (await Notifications.getExpoPushTokenAsync({
-            projectId: 'YOUR_PROJECT_ID_HERE' // ใส่ Project ID ของคุณถ้ามี
-        })).data;
-
-        console.log("Expo Push Token:", token); // <-- เอา Token นี้ไปเทสยิงดูก่อนได้
-        return token;
+        try {
+            token = (await Notifications.getExpoPushTokenAsync({
+                projectId: Constants.expoConfig?.extra?.eas?.projectId || 'YOUR_PROJECT_ID_HERE'
+            })).data;
+            console.log("Expo Push Token:", token); 
+            return token;
+        } catch (error) {
+            console.log("Error getting push token:", error);
+        }
     }
 
-   // --- [NEW] Backdrop for Bottom Sheet ---
+   // --- Backdrop for Bottom Sheet ---
     const renderBackdrop = useCallback(
         props => (
             <BottomSheetBackdrop
@@ -223,7 +231,6 @@ const HomeScreen = () => {
         []
     );
 
-    // ฟังก์ชันคำนวณระยะทาง (Haversine Formula)
     const calculateDistance = (lat1, lon1, lat2, lon2) => {
         const R = 6371; 
         const dLat = (lat2 - lat1) * Math.PI / 180;
@@ -237,13 +244,12 @@ const HomeScreen = () => {
         return parseFloat(d.toFixed(2)); 
     };
 
-    // ฟังก์ชันคำนวณเวลาเดินทางโดยประมาณ (นาที)
     const calculateTravelTime = (km) => {
-        const AVG_SPEED_KMH = 60; // ความเร็วเฉลี่ยรถพยาบาลในเมือง
-        const PREP_TIME_MINS = 2; // เวลาเตรียมตัวออกเหตุ
+        const AVG_SPEED_KMH = 60;
+        const PREP_TIME_MINS = 2;
         const travelTimeMins = (km / AVG_SPEED_KMH) * 60;
-        const totalTimeMins = Math.max(3, travelTimeMins + PREP_TIME_MINS); // ขั้นต่ำ 3 นาที
-        return Math.round(totalTimeMins * 60); // คืนค่าเป็นวินาที
+        const totalTimeMins = Math.max(3, travelTimeMins + PREP_TIME_MINS);
+        return Math.round(totalTimeMins * 60);
     };
 
     const formatTime = (s) => `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, '0')}`;
@@ -259,10 +265,8 @@ const HomeScreen = () => {
                 default: await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
             }
         } catch (e) {}
-        // ป้องกัน Error บน Simulator หรือเครื่องที่ไม่มีระบบสั่น
     };
 
-    // ฟังก์ชันสำหรับเปิดแผนที่เพื่อดูตำแหน่งปัจจุบัน
     const openInMaps = () => {
         if (currentLocation && currentLocation.latitude) {
         setShowInAppMap(true);
@@ -274,21 +278,17 @@ const HomeScreen = () => {
         try {
             if (Constants.appOwnership === 'expo') {
                 console.log("รันบน Expo Go: ข้ามการสแกน Face ID ชั่วคราว");
-                Alert.alert("โหมดจำลอง", "อนุญาตให้เข้าสู่ระบบ (ข้าม Face ID เนื่องจากรันบน Expo Go)");
                 onSuccess();
-                return; // จบการทำงานฟังก์ชันทันที
+                return;
             }
             const now = Date.now();
             if (lastAuthTime.current > 0 && (now - lastAuthTime.current < AUTH_GRACE_PERIOD)) {
-                console.log("Grace period active: Skip biometric");
-                onSuccess(); // อนุญาตทันที ไม่ต้องสแกน
+                onSuccess();
                 return;
             }
 
             const hasHardware = await LocalAuthentication.hasHardwareAsync();
             const isEnrolled = await LocalAuthentication.isEnrolledAsync();
-
-            // ... (โค้ดส่วนบนเหมือนเดิม) ...
 
             if (hasHardware && isEnrolled) {
                 if (biometricPermission === null) {
@@ -308,7 +308,6 @@ const HomeScreen = () => {
                             {
                                 text: "ใช้งาน",
                                 onPress: () => { 
-                                    // 🌟 1. เพิ่มเวลาหน่วงเป็น 1000 (1 วินาทีเต็ม) เพื่อให้ชัวร์ว่า Alert ปิดสนิท 100%
                                     setTimeout(async () => {
                                         try {
                                             const result = await LocalAuthentication.authenticateAsync({
@@ -320,23 +319,19 @@ const HomeScreen = () => {
                                             if (result.success) {
                                                 setBiometricPermission(true);
                                                 await AsyncStorage.setItem('use_biometric', 'true');
-                                                // @ts-ignore
                                                 lastAuthTime.current = Date.now();
                                                 onSuccess();
                                                 triggerHaptic('notificationSuccess');
                                             } else {
-                                                // 🌟 2. ดึงเอา Error Code ของระบบ iOS ออกมาโชว์ให้เห็นกันชัดๆ
                                                 Alert.alert(
                                                     "ไม่สำเร็จ", 
                                                     `เกิดข้อผิดพลาดรหัส: ${result.error}\nกรุณาแคปหน้าจอนี้แจ้งผู้พัฒนา`
                                                 );
-                                                console.log("Biometric Result Error:", result);
                                             }
                                         } catch (error) {
-                                            console.log("Biometric setup error:", error);
                                             Alert.alert("ข้อผิดพลาดระบบ", String(error));
                                         }
-                                    }, 1000); // รอ 1 วินาที
+                                    }, 300);
                                 }
                             }
                         ]
@@ -345,19 +340,18 @@ const HomeScreen = () => {
                     const result = await LocalAuthentication.authenticateAsync({
                         promptMessage: 'ยืนยันตัวตนเพื่อเข้าถึงข้อมูล',
                         cancelLabel: 'ยกเลิก',
-                        // 🌟 แก้ไขจุดที่ 2: เปลี่ยนเป็น true
                         disableDeviceFallback: true, 
                     });
                     if (result.success) {
                         lastAuthTime.current = Date.now();
                         onSuccess();
                         triggerHaptic('notificationSuccess');
-                    } else {
-                        // สแกนไม่ผ่าน
                     }
                 } else {
                     onSuccess();
                 }
+            } else {
+                onSuccess();
             }
         } catch (error) {
             console.log("Biometric error:", error);
@@ -365,50 +359,36 @@ const HomeScreen = () => {
         }
     };
 
-    // --- Data & Logic Functions ---
     const loadUser = async () => {
-        // if (authState?.user) return; // ถ้ามีข้อมูลผู้ใช้ใน Context แล้ว ให้ข้ามการโหลดใหม่
-    
         try {
             const result = await axios.get(`${API_URL}/profile`);
-               
-            // console.log("Current User State:", JSON.stringify(authState?.user, null, 2));
-            // console.log("Profile loaded:", );
             setUserData(result.data.data);
             setImageLoadError(false);
         } catch (e) {
             console.error("Profile load failed:", e.message);
-            if (e.response?.status === 401) onLogout && onLogout(); // ถ้า Token หมดอายุ ให้เตะออกหน้า Login
+            if (e.response?.status === 401) onLogout && onLogout();
         }
-          
     };
 
-    // ฟังก์ชันแปลงพิกัดเป็นชื่อสถานที่ (Reverse Geocoding)
     const getAddressFromCoords = async (latitude, longitude) => {
         if (!latitude || !longitude) return;
         try {
-        const reverseGeocode = await Location.reverseGeocodeAsync({
-            latitude,
-            longitude
-        });
-
-         if (reverseGeocode && reverseGeocode.length > 0) {
-            const place = reverseGeocode[0];
-            // จัดรูปแบบที่อยู่: ถนน, แขวง/ตำบล, เขต/อำเภอ, จังหวัด
-            const formattedAddress = [
-            place.street,
-            place.district,
-            place.city || place.region,
-            ].filter(Boolean).join(', ');
-            
-            setAddress(formattedAddress || 'ไม่สามารถระบุที่อยู่ได้');
-        }
+            const reverseGeocode = await Location.reverseGeocodeAsync({ latitude, longitude });
+            if (reverseGeocode && reverseGeocode.length > 0) {
+                const place = reverseGeocode[0];
+                const formattedAddress = [
+                    place.street,
+                    place.district,
+                    place.city || place.region,
+                ].filter(Boolean).join(', ');
+                
+                setAddress(formattedAddress || 'ไม่สามารถระบุที่อยู่ได้');
+            }
         } catch (error) {
-        console.log("Geocoding error:", error);
+            console.log("Geocoding error:", error);
         }
     };
 
-    // ฟังก์ชันอัปเดต UI เมื่อพิกัดเปลี่ยน
     const updateUIWithLocation = useCallback(async (coords) => {
         if (!coords || typeof coords !== 'object') return;
             const { latitude, longitude } = coords;
@@ -418,37 +398,30 @@ const HomeScreen = () => {
             setIsLocationLive(true);
     }, []);
 
-    // ฟังก์ชันเริ่มต้นการติดตามตำแหน่งแบบเรียลไทม์
     const startLocationTracking = async (mode = 'normal') => {
         try {
-            // เคลียร์ watcher เก่าก่อนเสมอ เพื่อไม่ให้ทำงานซ้อนกัน
             if (watchSubscription.current) {
                 watchSubscription.current.remove();
                 watchSubscription.current = null;
             }
 
-            // ตั้งค่าความละเอียดตามโหมด
             const options = mode === 'emergency' 
                 ? { 
                     accuracy: Location.Accuracy.BestForNavigation, 
-                    distanceInterval: 5, // ทุก 5 เมตร (กินแบตฯ)
-                    timeInterval: 2000   // หรือทุก 2 วินาที
+                    distanceInterval: 5,
+                    timeInterval: 2000   
                 }
                 : { 
                     accuracy: Location.Accuracy.Balanced, 
-                    distanceInterval: 100, // ทุก 100 เมตร (ประหยัดแบตฯ)
-                    timeInterval: 60000    // หรือทุก 1 นาที
+                    distanceInterval: 100,
+                    timeInterval: 60000    
                 };
 
-            // เริ่มติดตาม
             watchSubscription.current = await Location.watchPositionAsync(
                 options,
                 (newLocation) => {
                     if (newLocation && newLocation.coords) {
                         updateUIWithLocation(newLocation.coords);
-                        
-                        // ถ้าอยู่ในโหมดฉุกเฉิน ให้ส่งพิกัดขึ้น Server ตลอดเวลาด้วย (ถ้ามี API รองรับ)
-                        // if (mode === 'emergency') { sendLocationToServer(newLocation.coords); }
                     }
                 }
             );
@@ -457,11 +430,9 @@ const HomeScreen = () => {
         }
     };
 
-    // --- Location Logic สำหรับ Expo ---
     const requestLocationPermission = async () => {
         try {
-        // ขอสิทธิ์การเข้าถึงตำแหน่ง
-       let { status } = await Location.requestForegroundPermissionsAsync();
+            let { status } = await Location.requestForegroundPermissionsAsync();
             if (status !== 'granted') {
                 setAddress('กรุณาอนุญาตการเข้าถึงตำแหน่ง');
                 return false;
@@ -474,12 +445,9 @@ const HomeScreen = () => {
         }
     };
 
-    // ฟังก์ชันรีเฟรชข้อมูล (Pull to Refresh)
     const onRefresh = useCallback(async () => {
             setRefreshing(true);
-        
             try {
-            // ดึงข้อมูลโปรไฟล์และตำแหน่งใหม่ไปพร้อมกัน
                 await triggerHaptic('impactMedium');
                 await loadUser();
                 const { status } = await Location.getForegroundPermissionsAsync();
@@ -494,27 +462,19 @@ const HomeScreen = () => {
             }
     }, [updateUIWithLocation]);
     
-    // --- [NEW] Change Password Logic ---
     const handleChangePassword = async () => {
-        // 1. Validation พื้นฐาน
         if (!currentPassword || !newPassword || !confirmPassword) {
             Alert.alert('แจ้งเตือน', 'กรุณากรอกข้อมูลให้ครบถ้วน');
             return;
         }
-
-        // 2. เช็คความยาว (แนะนำ 8 ตัวขึ้นไปตามมาตรฐานใหม่ แต่ 6 ก็พอใช้ได้)
         if (newPassword.length < 6) {
             Alert.alert('แจ้งเตือน', 'รหัสผ่านต้องมีความยาวอย่างน้อย 6 ตัวอักษร');
             return;
         }
-
-        // 3. เช็ครหัสใหม่กับยืนยัน
         if (newPassword !== confirmPassword) {
             Alert.alert('แจ้งเตือน', 'รหัสผ่านใหม่ไม่ตรงกัน');
             return;
         }
-
-        // 4. (เพิ่ม) เช็คว่ารหัสใหม่ซ้ำกับรหัสเดิมหรือไม่
         if (currentPassword === newPassword) {
             Alert.alert('แจ้งเตือน', 'รหัสผ่านใหม่ต้องไม่ซ้ำกับรหัสผ่านเดิม');
             return;
@@ -523,7 +483,6 @@ const HomeScreen = () => {
         setIsChangingPassword(true);
 
         try {
-            // เรียก API
             const response = await axios.post(`${API_URL}/change-password`, {
                 old_password: currentPassword,
                 new_password: newPassword,
@@ -532,46 +491,29 @@ const HomeScreen = () => {
 
             if (response.status === 200) {
                 Alert.alert('สำเร็จ', 'เปลี่ยนรหัสผ่านเรียบร้อยแล้ว');
-                
-                // เคลียร์ค่า
                 setCurrentPassword('');
                 setNewPassword('');
                 setConfirmPassword('');
-                
-                // กลับไปหน้าหลักทันที
                 setSettingsView('main'); 
             }
-
         } catch (error) {
-            console.error("Change password error:", error);
-            
-            // จัดการข้อความ Error ให้ครอบคลุม
             let msg = "ไม่สามารถเปลี่ยนรหัสผ่านได้";
-            
             if (error.response) {
-                // Server ตอบกลับมา (4xx, 5xx)
                 msg = error.response.data?.message || msg;
             } else if (error.request) {
-                // เชื่อมต่อไม่ได้
                 msg = "ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้ กรุณาตรวจสอบอินเทอร์เน็ต";
             } else {
-                // Error อื่นๆ ของ JS
                 msg = error.message;
             }
-
             Alert.alert('เกิดข้อผิดพลาด', msg);
-
         } finally {
             setIsChangingPassword(false);
         }
     };
 
-    // ฟังก์ชันเริ่มต้นการขอความช่วยเหลือฉุกเฉิน
-    // --- SOS Submission Logic (หัวใจสำคัญ) ---
     const startSOS = async () => {
         if (isSubmitting || !authState?.token) return;
 
-        // 1. เช็คเน็ตก่อนเลย
         if (!isConnected) {
             triggerHaptic('notificationError');
             Alert.alert(
@@ -579,10 +521,11 @@ const HomeScreen = () => {
                 "โทรศัพท์ของคุณไม่ได้เชื่อมต่ออินเทอร์เน็ต ระบบจะเปลี่ยนเป็นการโทรออก 1669 แทน",
                 [
                     { text: "ยกเลิก", style: "cancel" },
-                    { text: "โทร 1669", onPress: () => Linking.openURL('tel:1669') }
+                    // 🌟 อัปเดต: ใช้ handleCall
+                    { text: "โทร 1669", onPress: () => handleCall('1669') }
                 ]
             );
-            return; // หยุดการทำงาน ไม่ส่ง axios
+            return;
         }
 
         setIsSubmitting(true);
@@ -594,12 +537,12 @@ const HomeScreen = () => {
             Alert.alert(
                 "การเชื่อมต่อล่าช้า", 
                 "ไม่สามารถส่งพิกัดผ่านอินเทอร์เน็ตได้ในขณะนี้ กรุณาโทร 1669 ทันที",
-                [{ text: "โทรเลย", onPress: () => Linking.openURL('tel:1669') }]
+                // 🌟 อัปเดต: ใช้ handleCall
+                [{ text: "โทรเลย", onPress: () => handleCall('1669') }]
             );
-        }, 8000); // ถ้า 8 วิยังส่งไม่ได้ ให้ตัดไปโทรเลย
+        }, 8000); 
 
         try {
-            // เตรียมข้อมูล Payload ที่จะส่ง
             const emergencyPayload = {
                 latitude: currentLocation?.latitude,
                 longitude: currentLocation?.longitude,
@@ -609,16 +552,13 @@ const HomeScreen = () => {
                 emergency_type: 'ACS_FAST_TRACK',
             };
           
-            // ส่งข้อมูลผ่าน Axios ไปยัง Laravel Server
             const response = await axios.post(`${API_URL}/user_location`, emergencyPayload, {
                 cancelToken: source.token
             });
             clearTimeout(timeout);
                 
             if (response.status === 200 || response.status === 201) {
-                // เมื่อส่งสำเร็จ เปลี่ยนสถานะหน้าจอเพื่อเริ่มนับถอยหลัง
                 const emergencyId = response.data?.data?.patient_id || response.data?.patient_id;
-                console.log("Emergency request created with ID:", emergencyId);
                 setActiveEmergencyId(emergencyId);
                 
                 setIsCalling(true);
@@ -627,20 +567,17 @@ const HomeScreen = () => {
             }
       
         } catch (error) {
-        clearTimeout(timeout);
-        if (axios.isCancel(error)) return; // กรณีถูกยกเลิกด้วย Timeout
-        triggerHaptic('notificationError');
-        console.error("Emergency call failed:", error.response?.data || error.message);
-        Alert.alert("เกิดข้อผิดพลาด", "ไม่สามารถส่งพิกัดได้ กรุณาโทร 1669 ทันที");
-        // แจ้งเตือนผู้ใช้กรณีส่งพิกัดไม่สำเร็จ
+            clearTimeout(timeout);
+            if (axios.isCancel(error)) return; 
+            triggerHaptic('notificationError');
+            Alert.alert("เกิดข้อผิดพลาด", "ไม่สามารถส่งพิกัดได้ กรุณาโทร 1669 ทันที");
         } finally {
-        setIsSubmitting(false);
-        setPressProgress(0);
-        setIsPressing(false);
+            setIsSubmitting(false);
+            setPressProgress(0);
+            setIsPressing(false);
         }
     };
 
-     // --- [NEW] Cancel SOS Logic ---
     const handleCancelSOS = async () => {
         Alert.alert(
             "ยืนยันการยกเลิก",
@@ -651,7 +588,6 @@ const HomeScreen = () => {
                     text: "ยืนยันยกเลิก",
                     style: "destructive",
                     onPress: async () => {
-                        // กรณีไม่มี ID รายการฉุกเฉิน (เช่น เน็ตช้าตอนส่งครั้งแรก หรือแอปยังโหลด ID ไม่เสร็จ)
                         if (!activeEmergencyId) {
                             setIsCalling(false);
                             setSecondsLeft(0);
@@ -661,25 +597,18 @@ const HomeScreen = () => {
 
                         setIsSubmitting(true);
                         try {
-                            const emergency_id = activeEmergencyId;
-                            console.log("Cancelling emergency ID:", emergency_id);
-                            // ส่งข้อมูลยกเลิกไปยัง Laravel (ปรับ Endpoint ตาม API ของคุณ)
                             await axios.post(`${API_URL}/emergency-requests/cancel`, {
                                 emergency_id: activeEmergencyId
                             }, {
                                 headers: { 'Authorization': `Bearer ${authState?.token}` }
                             });
                             
-                            // ล้างสถานะเมื่อสำเร็จ
                             setActiveEmergencyId(null);
                             setIsCalling(false);
                             setSecondsLeft(0);
                             triggerHaptic('notificationSuccess');
                             Alert.alert("ยกเลิกสำเร็จ", "รายการขอความช่วยเหลือของคุณถูกยกเลิกแล้ว");
                         } catch (error) {
-                            console.error("Cancel SOS error:", error.response?.status, error.response?.data);
-                            
-                            // UX Fallback: แม้ Server จะผิดพลาด (เช่น 404) แต่ควรให้ผู้ป่วยออกจากหน้านี้ได้
                             Alert.alert(
                                 "แจ้งเตือน", 
                                 "ไม่สามารถแจ้งยกเลิกไปยังศูนย์ระบบได้ (อาจเนื่องจากรายการถูกปิดไปแล้ว) ระบบจะทำการรีเซ็ตหน้าจอให้คุณ",
@@ -697,8 +626,6 @@ const HomeScreen = () => {
             ]
         );
     };
-
-    // --- Haptic & Animation Logic ---
 
     const handlePressIn = () => {
         if (isCalling) return;
@@ -725,16 +652,13 @@ const HomeScreen = () => {
         if (pressProgress < 100) setPressProgress(0);
     };
 
-    // --- Effects --- 
-    // แอนิเมชันจุดเขียวกระพริบ (Live Status)
-    // [FIX] เพิ่ม token ลงใน dependency array เพื่อให้ทำงานทันทีที่ Token โหลดมาเสร็จ
     useEffect(() => {
         const initData = async () => {
             setLoading(true);
+            await registerForPushNotificationsAsync(); 
             if (authState?.token) {
                 await loadUser();
             }
-            // await requestLocationPermission();
             setLoading(false);
         };
         initData();
@@ -760,7 +684,6 @@ const HomeScreen = () => {
         return () => clearInterval(countdownRef.current);
     }, [isCalling, secondsLeft]);
 
-    // ป้องกัน Error ตอนคำนวณ Region ของแผนที่
     const mapRegion = useMemo(() => {
         if (!currentLocation || !currentLocation.latitude) return null;
         return {
@@ -771,7 +694,6 @@ const HomeScreen = () => {
         };
     }, [currentLocation]);
 
-    // Auto Fit Map
     useEffect(() => {
         if (showInAppMap && currentLocation && mapRef.current) {
             mapRef.current.fitToCoordinates(
@@ -780,14 +702,13 @@ const HomeScreen = () => {
                     { latitude: HOSPITAL_COORDS.latitude, longitude: HOSPITAL_COORDS.longitude }
                 ],
                 {
-                    edgePadding: { top: 100, right: 50, bottom: 100, left: 50 }, // เว้นระยะขอบเพื่อให้เห็น Marker ชัดเจน
+                    edgePadding: { top: 100, right: 50, bottom: 100, left: 50 }, 
                     animated: true,
                 }   
             );
         }
     }, [currentLocation, showInAppMap]);
 
-    // Biometric Logic with AsyncStorage ---
     useEffect(() => {
         const loadBiometricPreference = async () => {
             try {
@@ -802,18 +723,15 @@ const HomeScreen = () => {
         loadBiometricPreference();
     }, []);
 
-    // Notification Listeners & Handlers
     useEffect(() => {
         notificationListRef.current = notificationList;
     }, [notificationList]);
 
     useEffect(() => {
-        // 1. ฟังก์ชันจัดการเมื่อได้รับ Notification
         const handleNewNotification = (notification) => {
             const content = notification.request.content;
-            const identifier = notification.request.identifier; // ✅ ใช้ ID จริงจากระบบ (แก้ตรงนี้)
+            const identifier = notification.request.identifier; 
 
-            // เช็คก่อนว่ามี ID นี้ใน list หรือยัง? ถ้ามีแล้ว "ไม่เพิ่มซ้ำ"
             const isDuplicate = notificationListRef.current.some(n => n.id === identifier);
             if (isDuplicate) return; 
 
@@ -824,7 +742,7 @@ const HomeScreen = () => {
             }) + ' น.';
 
             const newNotif = {
-                id: identifier, // ✅ ใช้ ID จริงแทน Date.now()
+                id: identifier, 
                 type: content.data?.type || 'info',
                 title: content.title || 'การแจ้งเตือนใหม่',
                 body: content.body || '',
@@ -836,29 +754,23 @@ const HomeScreen = () => {
             setHasUnread(true);
         };
 
-        // 2. Listener ตอนแอปเปิดอยู่ (Foreground)
         const receivedSub = Notifications.addNotificationReceivedListener(notification => {
             handleNewNotification(notification);
         });
 
-        // 3. Listener ตอนกด Notification (Response)
         const responseSub = Notifications.addNotificationResponseReceivedListener(response => {
             const content = response.notification.request.content;
-            const identifier = response.notification.request.identifier; // ✅ ใช้ ID จริง
+            const identifier = response.notification.request.identifier; 
 
             const currentList = notificationListRef.current;
-            
-            // หาว่ามีรายการนี้อยู่แล้วไหม
             const existingIndex = currentList.findIndex(n => n.id === identifier);
             
             let newList;
 
             if (existingIndex !== -1) {
-                // A. ถ้ามีอยู่แล้ว -> แค่อัปเดตสถานะเป็น "อ่านแล้ว" (ไม่เพิ่มใหม่)
                 newList = [...currentList];
                 newList[existingIndex] = { ...newList[existingIndex], read: true };
             } else {
-                // B. ถ้ายังไม่มี (เช่น มาจากตอนปิดแอป) -> สร้างใหม่โดยใช้ ID จริง
                 const now = new Date();
                 const timeString = now.toLocaleDateString('th-TH', {
                     year: '2-digit', month: 'short', day: 'numeric',
@@ -866,7 +778,7 @@ const HomeScreen = () => {
                 }) + ' น.';
 
                 const tappedNotif = {
-                    id: identifier, // ✅ ใช้ ID จริง
+                    id: identifier, 
                     type: content.data?.type || 'info',
                     title: content.title || 'การแจ้งเตือนใหม่',
                     body: content.body || '',
@@ -876,13 +788,12 @@ const HomeScreen = () => {
                 newList = [tappedNotif, ...currentList];
             }
 
-            // อัปเดต State และส่งไปหน้าถัดไป
             setNotificationList(newList);
             setHasUnread(false);
             
             navigation.navigate('Notifications', { 
                 notifications: newList,
-                initialId: identifier // ส่ง ID ของตัวที่ถูกกดไป
+                initialId: identifier 
             });
         });
 
@@ -894,32 +805,19 @@ const HomeScreen = () => {
 
     useEffect(() => {
         const subscription = DeviceEventEmitter.addListener('notificationRead', (readId) => {
-            console.log("Receive Read Signal ID:", readId);
-
             setNotificationList(prevList => {
-                // 1. สร้างลิสต์ใหม่ที่อัปเดตสถานะอ่านแล้ว
                 const newList = prevList.map(n => n.id === readId ? { ...n, read: true } : n);
-                
-                // อัปเดต Ref ให้ตรงกัน
                 notificationListRef.current = newList; 
-                
-                // 2. เช็คจาก newList (ข้อมูลล่าสุด)
-                // เช็คว่ามีตัวไหนที่ยังไม่อ่านเหลืออยู่ไหม
                 const stillHasUnread = newList.some(n => !n.read);
-                
-                // อัปเดตจุดแดง: จะขึ้นแดงก็ต่อเมื่อ (มีข้อมูล และ มีตัวที่ยังไม่อ่าน)
                 setHasUnread(newList.length > 0 && stillHasUnread);
-                
                 return newList;
             });
         });
-
         return () => {
             subscription.remove();
         };
     }, []);
 
-    // ตรวจสอบสถานะการเชื่อมต่อเครือข่าย
     useEffect(() => {
         const unsubscribe = NetInfo.addEventListener(state => {
             setIsConnected(state.isConnected && state.isInternetReachable);
@@ -935,7 +833,6 @@ const HomeScreen = () => {
                 return;
             }
 
-            // สลับโหมดการติดตาม
             if (isCalling) {
                 console.log("📍 Switch to Emergency Tracking Mode (High Accuracy)");
                 await startLocationTracking('emergency');
@@ -947,7 +844,6 @@ const HomeScreen = () => {
 
         manageLocationTracking();
 
-        // Cleanup: เมื่อ component ถูกทำลาย (ปิดหน้า) ให้หยุดติดตาม
         return () => {
             if (watchSubscription.current) {
                 watchSubscription.current.remove();
@@ -961,19 +857,15 @@ const HomeScreen = () => {
                 appState.current.match(/inactive|background/) && 
                 nextAppState === 'active'
             ) {
-                // แอปกลับมาทำงาน (Foreground) -> เริ่มติดตามใหม่
                 console.log('App has come to the foreground!');
                 startLocationTracking(isCalling ? 'emergency' : 'normal');
             } else if (nextAppState.match(/inactive|background/)) {
-                // แอปถูกพับจอ -> ถ้าไม่ฉุกเฉิน ให้หยุดติดตามเพื่อประหยัดแบต
-                if (!isCalling && watchSubscription.current) {
+                if (watchSubscription.current) {
                     console.log('App going to background -> Stop GPS');
                     watchSubscription.current.remove();
                     watchSubscription.current = null;
-                    
                 }
             }
-
             appState.current = nextAppState;
         });
 
@@ -984,29 +876,13 @@ const HomeScreen = () => {
 
     useEffect(() => {
         const timeElapsed = calculateTravelTime(distance) - secondsLeft;
-        
-        // ถ้าเวลาผ่านไปครบ 180 วินาทีพอดี ให้สั่นเตือน
         if (isCalling && timeElapsed === 180) {
-            // รูปแบบการสั่น: [รอ 0ms, สั่น 500ms, รอ 200ms, สั่น 500ms]
             const PATTERN = [0, 500, 200, 500]; 
             Vibration.vibrate(PATTERN);
-            
-            console.log("Vibrating: ER Call button appeared");
         }
     }, [secondsLeft, isCalling]);
 
     const strokeDashoffset = circumference - (pressProgress / 100) * circumference;
-
-    //  Helper เลือกไอคอนและสีตามประเภท
-    const getNotifIcon = (type) => {
-        switch (type) {
-            case 'emergency': return { icon: AlertTriangle, color: '#EF4444', bg: '#FEF2F2' };
-            case 'appointment': return { icon: Calendar, color: '#3B82F6', bg: '#EFF6FF' };
-            case 'manual_announcement': return { icon: AlertTriangle, color: '#F59E0B', bg: '#FFFBEB' }; // เพิ่มสีส้มสำหรับประกาศ
-            case 'info': 
-            default: return { icon: FileHeart, color: '#10B981', bg: '#F0FDF4' };
-        }
-    };
 
      const renderPasswordSettings = () => (
                     <>
@@ -1085,16 +961,12 @@ const HomeScreen = () => {
         );
     }
  
-    
-
     return (
         <GestureHandlerRootView style={{ flex: 1 }}>
             <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
                 <StatusBar barStyle="dark-content" />
                 
-                {/* ... (Header ส่วนเดิม) ... */}
                 <View style={styles.headerBar}>
-                    {/* (คงเดิมไว้) */}
                     <View style={styles.logoContainer}>
                         <Image 
                             source={require('../../assets/logo.png')}
@@ -1125,15 +997,12 @@ const HomeScreen = () => {
                 >
                     <View style={{ flex: 1, paddingBottom: 10 }}>
                         
-                        {/* --- Redesigned Main Card --- */}
                         <View style={styles.unifiedCard}>
-                            {/* Profile Section */}
                             <TouchableOpacity 
                                 style={styles.profileHeaderSection}
                                 onPress={() => authenticateUser(() => navigation.navigate('Profile'))}
                                 activeOpacity={0.8}
                             >
-                                {/* Row 1: Avatar, Name, HN */}
                                 <View style={styles.profileRow}>
                                         <View style={styles.avatarContainerMain}>
                                         <View style={styles.avatarCircleMain}>
@@ -1192,14 +1061,12 @@ const HomeScreen = () => {
                             </TouchableOpacity>
                         </View>
 
-                        {/* Interactive Area (SOS) */}
                         <View style={styles.mainInteractiveArea}>
                             {!isCalling ? (
                                 <>
                                     <View style={styles.headerTextContainer}>
                                         <AppText style={styles.title}>ขอความช่วยเหลือ</AppText>
                                         
-                                        {/* --- [แก้ไขจุดที่ 3] เพิ่มข้อความ รพ. + ระยะทาง + เวลา --- */}
                                         <View style={styles.hospitalInfoBox}>
                                             <AppText style={styles.hospitalNameText}>{HOSPITAL_COORDS.name}</AppText>
                                             <View style={styles.tripInfoRow}>
@@ -1209,21 +1076,16 @@ const HomeScreen = () => {
                                                 </View>
                                                 <View style={styles.tripInfoDivider} />
                                                 <View style={styles.tripInfoTag}>
-                                                    {/* ใช้ icon Zap หรือ Clock สื่อถึงเวลา */}
                                                     <Zap size={12} color="#F59E0B" fill="#F59E0B" /> 
                                                     <AppText style={[styles.tripInfoText, { color: '#D97706' }]}>
-                                                        {/* คำนวณเวลาเดินทาง (สมมติ speed 60km/h หรือ logic เดิม) */}
                                                         {' '}ถึงใน ~{Math.ceil(calculateTravelTime(distance)/60)} นาที
                                                     </AppText>
                                                 </View>
                                             </View>
                                         </View>
-                                        {/* --------------------------------------------------- */}
-
                                     </View>
 
                                     <View style={styles.sosWrapper}>
-                                        {/* ... (SVG และปุ่ม SOS คงเดิม) ... */}
                                         <Svg width={240} height={240} style={styles.svg}>
                                             <Circle cx="120" cy="120" r="110" stroke="#FEE2E2" strokeWidth={4} fill="transparent" />
                                             <Circle cx="120" cy="120" r="110" stroke="#EF4444" strokeWidth={4} fill="transparent" strokeDasharray={2 * Math.PI * 110} strokeDashoffset={2 * Math.PI * 110 - (pressProgress / 100) * (2 * Math.PI * 110)} strokeLinecap="round" />
@@ -1238,10 +1100,6 @@ const HomeScreen = () => {
                                             >
                                                 {isSubmitting ? <ActivityIndicator size="large" color="white" /> : (
                                                     <>
-                                                    {/* <Image 
-                                                        source={require('../../assets/logo.png')} 
-                                                        style={{ width: 90, height: 90, contentFit: 'contain' }} 
-                                                    /> */}
                                                     <Heart size={56} color="white" fill="white" />
                                                     <Text style={styles.sosText}>ฉุกเฉิน</Text></>
                                                 )}
@@ -1252,7 +1110,8 @@ const HomeScreen = () => {
 
                                     <TouchableOpacity 
                                         style={styles.directCallButton} 
-                                        onPress={() => Linking.openURL('tel:1669')}
+                                        // 🌟 อัปเดต: ใช้ handleCall สำหรับปุ่ม 1669
+                                        onPress={() => handleCall('1669')}
                                         activeOpacity={0.7}
                                     >
                                         <Phone size={16} color="#EF4444" style={{ marginRight: 6 }} />
@@ -1267,7 +1126,6 @@ const HomeScreen = () => {
                                     )}
                                 </>
                             ) : (
-                                /* ... (ส่วน isCalling = true คงเดิม) ... */
                                 <View style={styles.statusContainer}>
                                     <View style={styles.activeCard}>
                                         <View style={styles.activeCardHeader}>
@@ -1280,7 +1138,7 @@ const HomeScreen = () => {
                                     <View style={styles.checklistContainer}><AppText style={styles.checklistHeader}>ข้อปฏิบัติระหว่างรอ:</AppText>{[{ text: 'นั่งนิ่งๆ หายใจช้าๆ', bold: true }, { text: 'อมยาใต้ลิ้นทันที (ถ้ามี)', bold: true }, { text: 'ปลดกระดุมเสื้อให้หายใจสะดวก', bold: false }].map((item, i) => (<View key={i} style={styles.checkItem}><View style={[styles.checkCircle, item.bold && {borderColor: '#EF4444'}]} /><AppText style={[styles.checkText, item.bold && {fontWeight: 'bold'}]}>{item.text}</AppText></View>))}</View>
                                    {(calculateTravelTime(distance) - secondsLeft >= 180) && (
                                         <Animated.View 
-                                            entering={FadeInUp.duration(600)} // ใช้ FadeInUp ให้ปุ่มเด้งขึ้นมาดูเด่น
+                                            entering={FadeInUp.duration(600)} 
                                             style={{ width: '100%' }}
                                         >
                                             <TouchableOpacity 
@@ -1302,7 +1160,8 @@ const HomeScreen = () => {
                                                         elevation: 2
                                                     }
                                                 ]} 
-                                                onPress={() => Linking.openURL('tel:0647906014')}
+                                                // 🌟 อัปเดต: ใช้ handleCall สำหรับโทร ER
+                                                onPress={() => handleCall('0647906014')}
                                                 activeOpacity={0.8}
                                             >
                                                 <PhoneCall size={20} color="#EF4444" style={{ marginRight: 10 }} />
@@ -1329,7 +1188,6 @@ const HomeScreen = () => {
                         </View>
                     </View>
                 </ScrollView>
-                {/* ... (Modals ส่วนที่เหลือคงเดิม) ... */}
                 <BottomSheetModal
                     ref={settingsSheetRef}
                     enableContentPanningGesture={false}
@@ -1342,7 +1200,6 @@ const HomeScreen = () => {
                     backgroundStyle={{ borderRadius: 24, backgroundColor: 'white' }} 
                     onDismiss={() => setSettingsView('main')}
                 >
-                    {/* ✅ 2. ใส่ height: '100%' เพื่อให้เนื้อหาข้างในยืดเต็มพื้นที่ 90% นั้นเสมอ */}
                     <View style={{ flex: 1, height: '100%' }}> 
                         <SettingsMenu 
                             currentView={settingsView}
@@ -1378,7 +1235,6 @@ const HomeScreen = () => {
 };
 
 const styles = StyleSheet.create({
-
     container: { flex: 1, backgroundColor: '#F8FAFC' },
     headerBar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 25, paddingVertical: 15, backgroundColor: '#F8FAFC' },
     logoContainer: { flexDirection: 'row', alignItems: 'center', gap: 10 },
@@ -1392,7 +1248,7 @@ const styles = StyleSheet.create({
     unifiedCard: { backgroundColor: 'white', marginHorizontal: 20, marginTop: 10, borderRadius: 24, padding: 0, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.08, shadowRadius: 12, elevation: 5, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(0,0,0,0.02)' },
     profileHeaderSection: {
         padding: 20,
-        paddingBottom: 15, // ลด padding ด้านล่างเล็กน้อยเพื่อให้เข้ากับ Medical Stats
+        paddingBottom: 15, 
         backgroundColor: '#FFFFFF',
     },
     profileRow: { flexDirection: 'row', alignItems: 'center' },
@@ -1431,7 +1287,7 @@ const styles = StyleSheet.create({
     headerTextContainer: { alignItems: 'center', marginBottom: 20 },
     title: { fontSize: 32, fontWeight: '900', color: '#1E293B' },
     
-    // [New Styles for Hospital Info]
+    // Hospital Info
     hospitalInfoBox: { alignItems: 'center', marginTop: 5 },
     hospitalNameText: { fontSize: 14, fontWeight: 'bold', color: '#475569', marginBottom: 4 },
     tripInfoRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFBEB', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, borderWidth: 1, borderColor: '#FEF3C7' },
@@ -1475,19 +1331,18 @@ const styles = StyleSheet.create({
     cancelButtonText: { color: '#64748B', fontSize: 14, fontWeight: '600' },
     headerBackButton: { padding: 10, backgroundColor: '#F1F5F9', borderRadius: 14, zIndex: 20 },
 
-    // Modal Styles | Settings Modal
+    // Modal Styles
     modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
     settingsModalContent: { backgroundColor: 'white', padding: 25, borderTopLeftRadius: 35, borderTopRightRadius: 35, maxHeight: '85%' },
     modalHandle: { width: 50, height: 5, backgroundColor: '#E2E8F0', alignSelf: 'center', borderRadius: 5, marginBottom: 20 },
-    modalHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, paddingTop: 20, paddingHorizontal: 20 }, // [FIX] Added paddingTop
+    modalHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, paddingTop: 20, paddingHorizontal: 20 }, 
     modalTitle: { fontSize: 20, fontWeight: '900', color: '#1E293B' },
     modalCloseIcon: { padding: 8, backgroundColor: '#F8FAFC', borderRadius: 12 },
     
-    // Menu Styles for Card Look |  Settings Menu
+    // Menu Styles
     menuItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: '#F1F5F9', paddingHorizontal: 20 },
     menuGroupTitle: { fontSize: 12, fontWeight: 'bold', color: '#94A3B8', marginBottom: 10, marginLeft: 5, textTransform: 'uppercase' },
     menuIconBox: { width: 36, height: 36, borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginRight: 15 },
-    // [UPDATED] MenuItem as Card
     lineMenuItem: { 
         flexDirection: 'row', 
         alignItems: 'center', 
@@ -1497,7 +1352,6 @@ const styles = StyleSheet.create({
         marginBottom: 10, 
         borderWidth: 1, 
         borderColor: '#F1F5F9',
-        // Shadow Effect
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.03,
@@ -1583,7 +1437,7 @@ const styles = StyleSheet.create({
     placeholderContainer: { alignItems: 'center', justifyContent: 'center', padding: 40 },
     placeholderText: { marginTop: 15, fontSize: 14, color: '#94A3B8' },
     
-    // Modals & Popovers (คงเดิม)
+    // Modals
     mapModalContainer: { flex: 1, backgroundColor: 'white' },
     mapHeader: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 20, paddingBottom: 20, paddingTop: Platform.OS === 'ios' ? 60 : 40, alignItems: 'center', borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
     mapHeaderTitle: { fontSize: 18, fontWeight: 'bold' },
@@ -1596,7 +1450,7 @@ const styles = StyleSheet.create({
     detailModalOverlay: {
         flex: 1,
         backgroundColor: 'rgba(0,0,0,0.5)', 
-        justifyContent: 'center',          
+        justifyContent: 'center',         
         alignItems: 'center',             
         padding: 20,
     },

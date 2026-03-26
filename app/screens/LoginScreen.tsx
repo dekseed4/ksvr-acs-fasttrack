@@ -65,6 +65,25 @@ const LoginScreen = () => {
       }
   };
 
+  // 🌟 ฟังก์ชันป้องกันแครชตอนโทรออก (สำหรับ iPad / Simulator)
+  const handleCallEmergency = async () => {
+      const url = 'tel:1669';
+      try {
+          const supported = await Linking.canOpenURL(url);
+          if (supported) {
+              await Linking.openURL(url);
+          } else {
+              Alert.alert(
+                  "ไม่รองรับการโทร", 
+                  "อุปกรณ์ของคุณไม่สามารถทำการโทรออกได้ (เช่น iPad) กรุณาใช้โทรศัพท์มือถือโทร 1669 ทันที!"
+              );
+          }
+      } catch (error) {
+          console.log("Call error", error);
+          Alert.alert("เกิดข้อผิดพลาด", "ไม่สามารถเปิดระบบโทรศัพท์ได้");
+      }
+  };
+
   // SOS Emergency Call Function
   const handleSOS = () => {
     Alert.alert(
@@ -72,7 +91,8 @@ const LoginScreen = () => {
       'คุณกำลังจะโทรออกไปยังสายด่วน 1669',
       [
         { text: 'ยกเลิก', style: 'cancel' },
-        { text: 'โทรออก', onPress: () => Linking.openURL('tel:1669'), style: 'destructive' }
+        // 🌟 เปลี่ยนไปใช้ handleCallEmergency แทนการใช้ Linking.openURL ตรงๆ
+        { text: 'โทรออก', onPress: handleCallEmergency, style: 'destructive' }
       ]
     );
   };
@@ -92,13 +112,6 @@ const LoginScreen = () => {
           {/* Header Section: Hospital Brand */}
           <View style={styles.header}>
             <View style={styles.logoContainer}>
-              {/* <View style={styles.logoBg}>
-                <Activity size={70} color="rgba(255,255,255,0.15)" style={styles.bgIcon} />
-                <Stethoscope size={50} color="#ffffff" strokeWidth={2.5} />
-              </View>
-              <View style={styles.pulseBadge}>
-                <Activity size={14} color="#ffffff" strokeWidth={3} />
-              </View> */}
                 <Image 
                     source={require('../../assets/logo.png')}
                     style={{ width: 150, height: 150, contentFit: 'contain' }} 
@@ -179,16 +192,6 @@ const LoginScreen = () => {
               )}
             </TouchableOpacity>
 
-            {/* <View style={styles.divider}>
-              <View style={styles.line} />
-              <Text style={styles.dividerText}>หรือ</Text>
-              <View style={styles.line} />
-            </View>
-
-            <TouchableOpacity style={styles.registerBtn}>
-              <Heart size={18} color="#059669" />
-              <Text style={styles.registerBtnText}>ลงทะเบียนสมาชิกใหม่</Text>
-            </TouchableOpacity> */}
           </View>
 
           {/* SOS Section: High Priority Emergency */}
@@ -239,34 +242,6 @@ const styles = StyleSheet.create({
   logoContainer: {
     position: 'relative',
     // marginBottom: 20,
-  },
-  logoBg: {
-    width: 95,
-    height: 95,
-    backgroundColor: '#064e3b',
-    borderRadius: 26,
-    justifyContent: 'center',
-    alignItems: 'center',
-    elevation: 8,
-    shadowColor: '#064e3b',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.3,
-    shadowRadius: 10,
-    transform: [{ rotate: '3deg' }],
-  },
-  bgIcon: {
-    position: 'absolute',
-  },
-  pulseBadge: {
-    position: 'absolute',
-    bottom: -8,
-    right: -8,
-    backgroundColor: '#dc2626',
-    borderRadius: 20,
-    padding: 8,
-    borderWidth: 4,
-    borderColor: '#ffffff',
-    elevation: 4,
   },
   hospitalName: {
     fontSize: 22,
