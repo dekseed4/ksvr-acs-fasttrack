@@ -2,6 +2,7 @@ import { Dimensions } from 'react-native';
 import React from 'react';
 import { View, Text, StyleSheet, Linking, Alert, TouchableOpacity } from 'react-native';
 import { BottomSheetScrollView } from '@gorhom/bottom-sheet';
+import { WebView } from 'react-native-webview';
 import Animated, { 
     SlideInRight, SlideOutRight, runOnJS, 
     FadeInRight, FadeOutRight,
@@ -289,17 +290,13 @@ const SettingsMenu = ({
             {currentView === 'privacy' && (
                 <SwipeBackView key="privacy" onChangeView={onChangeView}>
                     <Header title="นโยบายความเป็นส่วนตัว" showBack={true} />
-                    <BottomSheetScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 20, paddingBottom: 40 }}>
-                        <View style={styles.infoCard}>
-                            <ShieldCheck size={40 * fontScale} color="#059669" style={{ alignSelf: 'center', marginBottom: 15 }} />
-                            <AppText style={{ fontWeight: 'bold', fontSize: 18 * fontScale, marginBottom: 15, textAlign: 'center', color: '#1E293B' }}>
-                                การคุ้มครองข้อมูลส่วนบุคคล
-                            </AppText>
-                            <AppText style={{ color: '#475569', lineHeight: 24 * fontScale, fontSize: 14 * fontScale, marginBottom: 15 }}>
-                                แอปพลิเคชัน KSVR ACS Fast Track ให้ความสำคัญอย่างยิ่งกับการคุ้มครองข้อมูลส่วนบุคคล...
-                            </AppText>
-                        </View>
-                    </BottomSheetScrollView>
+                    <View style={{ flex: 1, backgroundColor: '#FFFFFF' }}>
+                        <WebView 
+                            source={{ uri: 'https://ksvrhospital.rta.mi.th/ksvr/privacy_policy' }} 
+                            style={{ flex: 1 }}
+                            showsVerticalScrollIndicator={false}
+                        />
+                    </View>
                 </SwipeBackView>
             )}
 
@@ -307,20 +304,68 @@ const SettingsMenu = ({
             {currentView === 'about' && (
                 <SwipeBackView key="about" onChangeView={onChangeView}>
                     <Header title="เกี่ยวกับแอป" showBack={true} />
-                    <BottomSheetScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 40, paddingBottom: 40, alignItems: 'center' }}>
-                        <View style={styles.logoPlaceholder}>
-                            <Heart size={48 * fontScale} color="#EF4444" fill="#FEF2F2" />
+                    <BottomSheetScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 30, paddingBottom: 40 }}>
+                        <View style={{ alignItems: 'center', marginBottom: 25 }}>
+                            <View style={styles.logoPlaceholder}>
+                                <Heart size={48 * fontScale} color="#EF4444" fill="#FEF2F2" />
+                            </View>
+                            <AppText style={{ fontWeight: '900', fontSize: 22 * fontScale, marginTop: 20, color: '#1E293B', textAlign: 'center' }}>
+                                KSVR ACS Fast Track
+                            </AppText>
+                            <AppText style={{ color: '#64748B', marginTop: 8, fontSize: 14 * fontScale, textAlign: 'center' }}>
+                                ระบบเรียกดูแลผู้ป่วยวิกฤตหัวใจขาดเลือดเฉียบพลัน
+                            </AppText>
+                            <AppText style={{ color: '#475569', marginTop: 12, fontSize: 14 * fontScale, fontWeight: 'bold' }}>
+                                เวอร์ชัน: 1.0.0
+                            </AppText>
+                            <AppText style={{ color: '#475569', marginTop: 4, fontSize: 14 * fontScale }}>
+                                พัฒนาโดย: โรงพยาบาลค่ายกฤษณ์สีวะรา
+                            </AppText>
                         </View>
-                        <AppText style={{ fontWeight: '900', fontSize: 22 * fontScale, marginTop: 20, color: '#1E293B' }}>
-                            KSVR ACS Fast Track
-                        </AppText>
-                        <AppText style={{ color: '#64748B', marginTop: 8, fontSize: 15 * fontScale }}>
-                            เวอร์ชัน 1.0.0
-                        </AppText>
+
+                        <View style={styles.infoCard}>
+                            <AppText style={{ fontWeight: 'bold', fontSize: 16 * fontScale, color: '#1E293B', marginBottom: 10 }}>
+                                วัตถุประสงค์ของแอปพลิเคชัน:
+                            </AppText>
+                            <AppText style={{ color: '#475569', lineHeight: 24 * fontScale, fontSize: 14 * fontScale, marginBottom: 20 }}>
+                                KSVR ACS Fast Track ถูกพัฒนาขึ้นมาด้วยความมุ่งมั่นที่จะลดอัตราการเสียชีวิตและลดระยะเวลาในการเข้าถึงการรักษาของผู้ป่วยภาวะหัวใจขาดเลือดเฉียบพลัน (Acute Coronary Syndrome) โดยเน้นการประสานงานที่รวดเร็ว ไร้รอยต่อ ระหว่างผู้ป่วยและทีมแพทย์
+                            </AppText>
+
+                            <AppText style={{ fontWeight: 'bold', fontSize: 16 * fontScale, color: '#1E293B', marginBottom: 10 }}>
+                                คุณสมบัติหลัก:
+                            </AppText>
+                            <View style={{ marginLeft: 5, marginBottom: 20, gap: 8 }}>
+                                <AppText style={{ color: '#475569', fontSize: 14 * fontScale, lineHeight: 22 * fontScale }}>
+                                    • <AppText style={{ fontWeight: 'bold', color: '#1E293B' }}>แจ้งเหตุฉุกเฉิน (One-Touch Alert):</AppText> แจ้งเหตุทันทีเพียงกดปุ่มค้างไว้ 1 วินาที
+                                </AppText>
+                                <AppText style={{ color: '#475569', fontSize: 14 * fontScale, lineHeight: 22 * fontScale }}>
+                                    • <AppText style={{ fontWeight: 'bold', color: '#1E293B' }}>ระบบติดตามพิกัด (Precise GPS Tracking):</AppText> ส่งตำแหน่งผู้ป่วยให้รถพยาบาลแบบเรียลไทม์
+                                </AppText>
+                                <AppText style={{ color: '#475569', fontSize: 14 * fontScale, lineHeight: 22 * fontScale }}>
+                                    • <AppText style={{ fontWeight: 'bold', color: '#1E293B' }}>เตรียมความพร้อมล่วงหน้า (Advanced Team Prep):</AppText> แจ้งเตือนทีมแพทย์ปลายทางให้เตรียมพร้อมรับผู้ป่วยวิกฤตทันที
+                                </AppText>
+                                <AppText style={{ color: '#475569', fontSize: 14 * fontScale, lineHeight: 22 * fontScale }}>
+                                    • <AppText style={{ fontWeight: 'bold', color: '#1E293B' }}>สายด่วนฉุกเฉิน:</AppText> เชื่อมต่อระบบโทรออกไปยังสายด่วน 1669 และเบอร์ติดต่อโรงพยาบาลโดยตรง
+                                </AppText>
+                            </View>
+
+                            <View style={{ height: 1, backgroundColor: '#F1F5F9', marginBottom: 15 }} />
+
+                            <AppText style={{ fontWeight: 'bold', fontSize: 15 * fontScale, color: '#1E293B', marginBottom: 10 }}>
+                                ติดต่อสอบถามหรือแจ้งปัญหาการใช้งาน:
+                            </AppText>
+                            <View style={{ marginLeft: 5, gap: 4 }}>
+                                <AppText style={{ color: '#475569', fontSize: 14 * fontScale }}>
+                                    • โทรศัพท์: <AppText style={{ color: '#3B82F6' }}>064-790-6014</AppText>
+                                </AppText>
+                                <AppText style={{ color: '#475569', fontSize: 14 * fontScale }}>
+                                    • อีเมล: <AppText style={{ color: '#3B82F6' }}>[อีเมลสำหรับติดต่อทีมพัฒนา หรือ IT support]</AppText>
+                                </AppText>
+                            </View>
+                        </View>
                     </BottomSheetScrollView>
                 </SwipeBackView>
             )}
-
         </View>
     );
 };

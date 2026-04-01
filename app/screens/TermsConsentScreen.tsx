@@ -47,7 +47,22 @@ const TermsConsentScreen = () => {
 
     setIsSubmitting(true);
     try {
-      const response = await axios.post(`${API_URL}/accept-terms`);
+      // 🌟 ดึง Token จาก authState (ปรับชื่อตัวแปร token ตามที่คุณเก็บไว้ใน AuthContext จริงๆ นะครับ)
+      const token = authState?.token || authState?.user?.api_token; 
+
+      // 🌟 เพิ่ม Header ข้อมูล Token ลงไปใน axios
+      const response = await axios.post(
+        `${API_URL}/accept-terms`,
+        {}, // ส่ง Body ว่างเปล่าไป (ถ้ามีข้อมูลจะส่งให้ใส่ตรงนี้)
+        {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+
         if (response.data.status) {
             setAuthState(prev => ({
                 ...prev, 
@@ -58,8 +73,10 @@ const TermsConsentScreen = () => {
             }));
         } 
     } catch (error) {
-      console.error(error);
-      Alert.alert('ข้อผิดพลาด', 'ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้');
+      // 🌟 เพิ่มการ Log Error ให้ละเอียดขึ้น เพื่อให้รู้ว่าพังที่ไหนแน่
+      console.error("API Error: ", error.response?.data || error.message);
+      
+      Alert.alert('ข้อผิดพลาด', 'ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้ โปรดลองอีกครั้ง');
     } finally {
       setIsSubmitting(false);
     }

@@ -5,6 +5,9 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Home, Map, BookOpen, Heart } from 'lucide-react-native';
 
+// 🌟 1. Import SafeAreaProvider และ useSafeAreaInsets
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
+
 import LoginScreen from './app/screens/LoginScreen';
 import HomeScreen from './app/screens/HomeScreen';
 import ProfileScreen from './app/screens/ProfileScreen';
@@ -23,6 +26,8 @@ const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
 
 function AppTabs() {
+    // 🌟 2. เรียกใช้งาน insets เพื่อดึงค่าระยะขอบจอด้านล่างของมือถือแต่ละเครื่อง
+    const insets = useSafeAreaInsets();
 
     return (
         <Tab.Navigator
@@ -30,10 +35,10 @@ function AppTabs() {
                 headerShown: false,
                 tabBarIcon: ({ focused, color, size }) => {
                     const iconProps = {
-                    color: color,
-                    size: size,
-                    strokeWidth: focused ? 2.5 : 2, // เพิ่มความหนาเส้นเมื่อถูกเลือก (Optional)
-                };
+                        color: color,
+                        size: size,
+                        strokeWidth: focused ? 2.5 : 2, 
+                    };
 
                     if (route.name === 'HomeTab') {
                         return <Home {...iconProps} />;
@@ -44,35 +49,30 @@ function AppTabs() {
                     }
                     return null;
                 },
-                // tabBarActiveTintColor: 'tomato',
-                // tabBarInactiveTintColor: 'gray',
-                // ซ่อน Title ตรง Header แต่เก็บปุ่ม Logout ไว้
                 headerTitle: '',
-                tabBarActiveTintColor: '#EF4444', // สีแดงเมื่อเลือก
-                tabBarInactiveTintColor: '#94A3B8', // สีเทาเมื่อไม่ได้เลือก
+                tabBarActiveTintColor: '#EF4444', 
+                tabBarInactiveTintColor: '#94A3B8', 
                 tabBarStyle: {
-                backgroundColor: '#FFFFFF',
-                borderTopWidth: 0,
-                elevation: 10,
-                shadowColor: '#000',
-                shadowOffset: { width: 0, height: -4 },
-                shadowOpacity: 0.05,
-                shadowRadius: 10,
-                
-                // ✅ ปรับความสูง: Android ควรอยู่ที่ประมาณ 60-70 หากไม่มีปุ่มระบบ 
-                // แต่ถ้ามีปัญหาจม ให้เพิ่มความสูงขึ้นเล็กน้อย
-                height: Platform.OS === 'ios' ? 88 : 70, 
-
-                // ✅ จุดสำคัญ: ปรับ paddingBottom ของ Android
-                // หาก Android มีปัญหาจม ให้ใส่ค่าประมาณ 10-15 เพื่อดันไอคอนและข้อความขึ้นมา
-                paddingBottom: Platform.OS === 'ios' ? 30 : 12, 
-                
-                paddingTop: 10,
+                    backgroundColor: '#FFFFFF',
+                    borderTopWidth: 0,
+                    elevation: 10,
+                    shadowColor: '#000',
+                    shadowOffset: { width: 0, height: -4 },
+                    shadowOpacity: 0.05,
+                    shadowRadius: 10,
+                    
+                    // 🌟 3. ปรับความสูงและ padding ให้ยืดหยุ่นตาม insets.bottom 
+                    // 65 คือความสูงมาตรฐาน แล้วบวกด้วยระยะขอบล่างของหน้าจอ
+                    height: 65 + (insets.bottom > 0 ? insets.bottom : Platform.OS === 'ios' ? 20 : 10), 
+                    
+                    // ดันไอคอนและตัวหนังสือขึ้นมาให้พ้นแถบ Navigation Bar
+                    paddingBottom: insets.bottom > 0 ? insets.bottom : Platform.OS === 'ios' ? 20 : 10, 
+                    paddingTop: 10,
                 },
                 tabBarLabelStyle: {
-                fontSize: 12,
-                fontWeight: '600',
-                marginBottom: 5,
+                    fontSize: 12,
+                    fontWeight: '600',
+                    marginBottom: 5,
                 }
             })} 
         >
@@ -97,25 +97,28 @@ function AppTabs() {
 
 export default function App() {
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
-        <LoadingProvider>
-            <ThemeProvider>
-                <AuthProvider> 
-                    <BottomSheetModalProvider>
-                        <Layout />
-                    </BottomSheetModalProvider> 
-                </AuthProvider>
-            </ThemeProvider>
-        </LoadingProvider> 
-    </GestureHandlerRootView>
+    // 🌟 4. ครอบแอปทั้งหมดด้วย SafeAreaProvider 
+    <SafeAreaProvider>
+        <GestureHandlerRootView style={{ flex: 1 }}>
+            <LoadingProvider>
+                <ThemeProvider>
+                    <AuthProvider> 
+                        <BottomSheetModalProvider>
+                            <Layout />
+                        </BottomSheetModalProvider> 
+                    </AuthProvider>
+                </ThemeProvider>
+            </LoadingProvider> 
+        </GestureHandlerRootView>
+    </SafeAreaProvider>
   );
 }
 
 export const Layout = () => {
     const { authState, isLoading } = useAuth();
     
-    // เช็คเงื่อนไข (ต้องมั่นใจว่า authState.user ไม่ใช่ null ก่อนเช็ค term_accepted_at)
     const showConsentScreen = authState?.user && !authState.user.term_accepted_at;
+
 
     if (isLoading) {
         return (
@@ -148,7 +151,7 @@ export const Layout = () => {
                             <Stack.Screen 
                                 name="Notifications" 
                                 component={NotificationScreen} 
-                                options={{ headerShown: false }} // ซ่อน Header ของ Stack เพราะเราสร้างเองในไฟล์แล้ว
+                                options={{ headerShown: false }} 
                             />
                         </Stack.Group>
                     )
@@ -165,5 +168,4 @@ const styles = StyleSheet.create({
     loadingIconContainer: { marginBottom: 30, shadowColor: '#EF4444', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.2, shadowRadius: 20, elevation: 10 },
     loadingTitle: { fontSize: 24, fontWeight: '900', color: '#1E293B', letterSpacing: 1 },
     loadingText: { marginTop: 8, color: '#94A3B8', fontSize: 14, fontWeight: '500' }
-    
 });

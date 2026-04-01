@@ -3,7 +3,7 @@
     "name": "KSVR ACS FAST TRACK",
     "slug": "ksvr-acs-fasttrack",
     "scheme": "ksvr-acs-fasttrack",
-    "version": "1.0.0",
+    "version": "1.0.2",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "splash": {
@@ -30,7 +30,6 @@
     },
     "android": {
       "package": "com.ksvr.acsfasttrack",
-      "versionCode": 1,
       "splash": {
         "resizeMode": "contain",
         "backgroundColor": "#FFFFFF"

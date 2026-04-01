@@ -1,120 +1,146 @@
-import { createContext, useContext, useEffect, useState } from "react";
+import React, { createContext, useContext, useEffect, useState, useCallback, useMemo } from "react";
 import axios from "axios";
 import * as SecureStore from "expo-secure-store";
 import { Alert, Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { API_URL } from '../config';
+import { usePushNotifications } from "../hooks/usePushNotifications";
 
+const TOKEN_KEY = "my-jwt";
+
+// 🌟 Global flag ป้องกัน Alert เด้งซ้ำซ้อน
+let isSessionAlertShown = false;
+
+// 🌟 TypeScript Interfaces ที่รัดกุมขึ้น
 export interface UserProfile {
     name: string;
     hn: string;
-    detail_genaral: any; // หรือจะระบุละเอียดก็ได้
-    detail_medical: any;
-    family_patient: any;
-    addr: any;
+    detail_genaral?: any;
+    detail_medical?: any;
+    family_patient?: any;
+    addr?: any;
 }
 
-interface AuthProps {
-    authState? : { token: string | null; authenticated: boolean | null; user: UserProfile | null;};
-    onLogin?: (phoneNumber: string, password: string) => Promise<any>;
-    onLogout?: () => Promise<any>;
-    setUserData?: (data: UserProfile) => void;
-    updateUser: (newUserData: any) => void;
-    isLoading?: boolean;
+interface AuthState {
+    token: string | null;
+    authenticated: boolean | null;
+    user: UserProfile | null;
 }
 
-const TOKEN_KEY = "my-jwt";
-import { API_URL } from '../config';
-import { usePushNotifications } from "../hooks/usePushNotifications";
-const AuthContext = createContext<AuthProps>({} as AuthProps);
+interface AuthContextType {
+    authState: AuthState;
+    isLoading: boolean;
+    onLogin: (phoneNumber: string, password: string) => Promise<any>;
+    onLogout: () => Promise<void>;
+    setUserData: (data: UserProfile) => void;
+    updateUser: (newUserData: Partial<UserProfile>) => void; // ใช้ Partial เพื่อให้ส่งมาแค่อัปเดตบางฟิลด์ได้
+}
 
+const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+// 🌟 Custom Hook แบบ Modern (เช็คว่ามีการเรียกใช้นอก Provider ไหม)
 export const useAuth = () => {
-    return useContext(AuthContext);
+    const context = useContext(AuthContext);
+    if (context === undefined) {
+        throw new Error("useAuth must be used within an AuthProvider");
+    }
+    return context;
 };
 
-export const AuthProvider = ({ children }: any) => {
-
+export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     const [isLoading, setIsLoading] = useState(true);
-    const { expoPushToken, notification } = usePushNotifications();
+    const { expoPushToken } = usePushNotifications();
 
-    const [authState, setAuthState] = useState<{ 
-        token: string | null; 
-        authenticated: boolean | null;
-        user: UserProfile | null;
-    }>({
+    const [authState, setAuthState] = useState<AuthState>({
         token: null,
         authenticated: null,
         user: null,
     });
 
-    // เพิ่ม useEffect ตัวใหม่ สำหรับดักจับ Error 401
-    useEffect(() => {
-        // สร้าง Interceptor
-        const interceptor = axios.interceptors.response.use(
-            response => response, // ถ้าสำเร็จ ปล่อยผ่าน
-            async (error) => {
-                // ถ้าเจอ Error 401 (Token หมดอายุ หรือ โดนดีดออก)
-                if (error.response?.status === 401) {
-                    
-                    // ป้องกันการ Loop logout ซ้ำๆ โดยเช็คว่าตอนนี้ Login อยู่ไหม
-                    const currentToken = await SecureStore.getItemAsync(TOKEN_KEY);
-                    if (currentToken) {
-                        console.log("Session expired or logged in on another device.");
-                        
-                        // แจ้งเตือนผู้ใช้
-                        Alert.alert(
-                            "หมดเวลาการใช้งาน", 
-                            "มีการเข้าสู่ระบบจากอุปกรณ์อื่น หรือเซสชั่นหมดอายุ กรุณาเข้าสู่ระบบใหม่",
-                            [{ text: "ตกลง" }]
-                        );
+    // 🌟 1. ใช้ useCallback ครอบฟังก์ชัน เพื่อจำตำแหน่งหน่วยความจำเดิม ป้องกันการ Re-render
+    const logout = useCallback(async () => {
+        try {
+            if (axios.defaults.headers.common["Authorization"]) {
+                await axios.post(`${API_URL}/logout`).catch(() => {}); // ปล่อยผ่านเงียบๆ ถ้าเน็ตหลุด
+            }
+        } finally {
+            await SecureStore.deleteItemAsync(TOKEN_KEY);
+            delete axios.defaults.headers.common["Authorization"];
+            await AsyncStorage.removeItem('use_biometric');
+            
+            setAuthState({
+                token: null,
+                authenticated: false,
+                user: null,
+            });
+        }
+    }, []);
 
-                        // สั่ง Logout (ล้างค่าในเครื่อง)
-                        await SecureStore.deleteItemAsync(TOKEN_KEY);
-                        delete axios.defaults.headers.common["Authorization"];
-                        setAuthState({
-                            token: null,
-                            authenticated: false,
-                            user: null,
-                        });
+    // 🌟 2. Interceptor ที่ปลอดภัยและพ่วง Dependency ถูกต้อง
+    useEffect(() => {
+        const interceptor = axios.interceptors.response.use(
+            (response) => response,
+            async (error) => {
+                const originalRequest = error.config;
+
+                if (error.response?.status === 401 && !originalRequest.url?.includes('/login')) {
+                    if (!isSessionAlertShown) {
+                        isSessionAlertShown = true;
+                        console.log("⚠️ Token หมดอายุ หรือมีการเข้าสู่ระบบจากอุปกรณ์อื่น...");
+
+                        await logout(); // เตะออกทันที ไม่ต้องรอผู้ใช้กดตกลง
+
+                        Alert.alert(
+                            "หมดเวลาการใช้งาน",
+                            "เซสชันของคุณหมดอายุ หรือมีการเข้าสู่ระบบจากอุปกรณ์อื่น กรุณาเข้าสู่ระบบใหม่",
+                            [
+                                {
+                                    text: "ตกลง",
+                                    onPress: () => {
+                                        isSessionAlertShown = false;
+                                    }
+                                }
+                            ],
+                            { cancelable: false }
+                        );
                     }
                 }
                 return Promise.reject(error);
             }
         );
 
-        // Cleanup function: ถอด interceptor เมื่อ component ถูกทำลาย
         return () => {
             axios.interceptors.response.eject(interceptor);
         };
-    }, []); // ทำงานครั้งเดียวตอนเริ่มแอป
-    
-    useEffect(() => {
-        if (expoPushToken && authState?.authenticated && authState?.token) {
-            console.log("Sending token:", expoPushToken); // 1. เช็คดูว่า Token หน้าตาเป็นยังไง
+    }, [logout]); // ผูกกับ logout อย่างปลอดภัย
 
-            axios.post(`${API_URL}/update-device-tokens`, { // <-- เช็ค URL ด้วยว่าใน Laravel มี s หรือไม่มี s
-                token: typeof expoPushToken === 'object' ? expoPushToken.data : expoPushToken, // กันเหนียว
-                platform: Platform.OS
-            })
-            .then((response) => {
-                console.log("✅ Success:", response.data);
-            })
-            .catch(err => { 
-                // --- แก้ตรงนี้ครับ เพื่อดูไส้ในของ Error 500 ---
-                console.log("❌ Error Status:", err.response?.status);
-                console.log("❌ Error Detail:", JSON.stringify(err.response?.data, null, 2)); 
-                // มันจะพ่น Error จาก Laravel ออกมาตรงนี้เลย
-            });
-        }
-    }, [expoPushToken, authState?.authenticated, authState?.token]);
-  
+    // 🌟 3. จัดการ Push Token เป็น Async/Await คลีนๆ
+    useEffect(() => {
+        const updatePushToken = async () => {
+            if (expoPushToken && authState.authenticated && authState.token) {
+                try {
+                    const tokenString = typeof expoPushToken === 'object' ? expoPushToken.data : expoPushToken;
+                    await axios.post(`${API_URL}/update-device-tokens`, {
+                        token: tokenString,
+                        platform: Platform.OS
+                    });
+                    console.log("✅ Push Token Updated");
+                } catch (err: any) {
+                    console.log("❌ Token Update Error:", err.response?.status);
+                }
+            }
+        };
+        
+        updatePushToken();
+    }, [expoPushToken, authState.authenticated, authState.token]);
+
+    // 🌟 4. โหลด Token ตอนเริ่มแอป
     useEffect(() => {
         const loadToken = async () => {
-            try { // <--- ใส่ try-catch ครอบทั้งหมด
+            try {
                 const token = await SecureStore.getItemAsync(TOKEN_KEY);
- 
                 if (token) {
                     axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
-
                     try {
                         const userResponse = await axios.get(`${API_URL}/profile`);
                         setAuthState({
@@ -123,145 +149,73 @@ export const AuthProvider = ({ children }: any) => {
                             user: userResponse.data.data || userResponse.data,
                         });
                     } catch (error) {
-                        console.log("Token expired or invalid");
-                        await SecureStore.deleteItemAsync(TOKEN_KEY);
-                        delete axios.defaults.headers.common["Authorization"];
-                        setAuthState({ token: null, authenticated: false, user: null });
+                        // ถ้าโปรไฟล์ดึงไม่ได้ (เช่น Token เน่า) ให้สับสวิตช์ Logout เลย
+                        await logout();
                     }
                 } else {
-                    // ถ้าไม่มี Token ก็เซ็ตให้ชัดเจน
                     setAuthState({ token: null, authenticated: false, user: null });
                 }
             } catch (e) {
-                console.error("SecureStore Error:", e);
                 setAuthState({ token: null, authenticated: false, user: null });
             } finally {
-                // <--- 4. สำคัญที่สุด: โหลดเสร็จแล้ว (ไม่ว่าจะสำเร็จหรือล้มเหลว) ให้ปิด Loading
-                setIsLoading(false); 
+                setIsLoading(false);
             }
         };
-        
-        loadToken();
-    }, []);
 
-    const updateUser = (newUserData: any) => {
+        loadToken();
+    }, [logout]);
+
+    // 🌟 ฟังก์ชันอื่นๆ หุ้ม useCallback ไว้หมด
+    const updateUser = useCallback((newUserData: Partial<UserProfile>) => {
         setAuthState((prevState) => ({
             ...prevState,
-            user: prevState.user ? {
-                ...prevState.user,
-                ...newUserData, // นำข้อมูลใหม่ (เช่น detail_genaral) ไปทับข้อมูลเดิมเฉพาะส่วน
-            } : null,
+            user: prevState.user ? { ...prevState.user, ...newUserData } : null,
         }));
-    };
+    }, []);
 
-    const login = async (phoneNumber, password) => {
+    const setUserData = useCallback((data: UserProfile) => {
+        setAuthState((prevState) => ({
+            ...prevState,
+            user: data,
+        }));
+    }, []);
+
+    const login = useCallback(async (phoneNumber: string, password: string) => {
         try {
             const result = await axios.post(`${API_URL}/login`, { phoneNumber, password });
+            const { token, user } = result.data;
 
-            // ดึงข้อมูลที่จำเป็นออกมาจาก response.data
-            const { token, user, require_consent } = result.data;
+            if (!token) throw new Error("Token not found");
 
-            // 1. ตรวจสอบ Token
-            if (!token) {
-                throw new Error("Token not found in response");
-            }
+            isSessionAlertShown = false; // ปลดล็อค Alert กันเหนียว
 
-            // 2. อัปเดต State (ใส่ข้อมูล user ลงไปด้วย)
             setAuthState({
                 token: token,
-                authenticated: true, 
-                user: user || null, 
+                authenticated: true,
+                user: user || null,
             });
 
-            // 3. ตั้งค่า Header
             axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
-
-            // 4. เก็บลง SecureStore
             await SecureStore.setItemAsync(TOKEN_KEY, token);
 
-            // 5. [สำคัญ] ส่ง Data กลับไปให้ LoginScreen เช็ค require_consent
-            return result.data; 
-
-        } catch (e) {
-            // จัดการ Error
-            return { 
-                error: true, 
-                message: e.response?.data?.message || e.message || "เกิดข้อผิดพลาดในการเชื่อมต่อ" 
+            return result.data;
+        } catch (e: any) {
+            return {
+                error: true,
+                message: e.response?.data?.message || "เกิดข้อผิดพลาดในการเชื่อมต่อ"
             };
         }
-    };
-    
-    const setUserData = (data: UserProfile) => {
-        setAuthState((prev) => ({
-            ...prev,
-            user: data
-        }));
-    };
+    }, []);
 
-    const logout = async () => {
-        try {
-            // 1. บอก Laravel ให้ลบ Token นี้ทิ้ง (Security Best Practice)
-            await axios.post(`${API_URL}/logout`);
-        } catch (e) {
-            console.log('Logout API error:', e);
-        } finally {
-            // 2. เคลียร์ข้อมูลในเครื่องแน่นอน แม้ API จะ Error
-            await SecureStore.deleteItemAsync(TOKEN_KEY);
-            delete axios.defaults.headers.common["Authorization"];
-            AsyncStorage.removeItem('use_biometric');
-            setAuthState({
-                token: null,
-                authenticated: false,
-                user: null,
-            });
-        }
-    };
-
-    useEffect(() => {
-        // สร้าง Interceptor ดักจับ 'ขาลง' (Response) จาก API
-        const interceptor = axios.interceptors.response.use(
-            (response) => {
-                return response;
-            },
-            async (error) => {
-                // เก็บข้อมูล Request ต้นทางไว้เช็ค
-                const originalRequest = error.config;
-
-                // ✨ เพิ่มเงื่อนไข && !originalRequest.url.includes('/login') เข้าไป
-                // เพื่อบอกว่า "ถ้าเป็น Error 401 จากการล็อกอิน ไม่ต้องทำงานนะ ปล่อยผ่านไปให้หน้า Login จัดการเอง"
-                if (error.response && error.response.status === 401 && !originalRequest.url.includes('/login')) {
-                    
-                    console.log("⚠️ Token หมดอายุ หรือไม่ถูกต้อง สั่งบังคับ Logout...");
-                    
-                    Alert.alert(
-                        "เซสชันหมดอายุ",
-                        "กรุณาเข้าสู่ระบบใหม่อีกครั้งเพื่อความปลอดภัย",
-                        [{ text: "ตกลง" }]
-                    );
-
-                    await logout();
-                }
-                
-                return Promise.reject(error);
-            }
-        );
-
-        // Cleanup: ลบ Interceptor ออกเมื่อไม่ได้ใช้งาน เพื่อป้องกันโค้ดรันซ้อนกัน (Memory Leak)
-        return () => {
-            axios.interceptors.response.eject(interceptor);
-        };
-    }, []); // วงเล็บว่าง [] หมายถึงให้รันแค่ตอนเปิดแอปครั้งแรกครั้งเดียว
-    
-    const value = {
+    // 🌟 5. ใช้ useMemo ให้แพคเกจ Context Value ส่งลงไปหาลูกๆ แบบลื่นไหล
+    const value = useMemo(() => ({
         authState,
-        setAuthState,
+        isLoading,
         onLogin: login,
         onLogout: logout,
-        setUserData: setUserData,
-        updateUser: updateUser,
-        isLoading
-    };
+        setUserData,
+        updateUser
+    }), [authState, isLoading, login, logout, setUserData, updateUser]);
 
     return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
-
 };

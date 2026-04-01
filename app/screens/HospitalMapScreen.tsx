@@ -20,8 +20,8 @@ const MAIN_HOSPITAL = {
     id: 'fort_krit_main',
     name: "โรงพยาบาลค่ายกฤษณ์สีวะรา",
     address: "ถ.นิตโย ต.แวง อ.เมือง จ.สกลนคร",
-    latitude: 17.1872777,
-    longitude: 104.1058157,
+    latitude: 17.1870235,
+    longitude: 104.1066193,
     phone: "042712860",
     isMain: true,
     rating: 5.0,
@@ -52,6 +52,7 @@ const HospitalMarker = ({ hospital, isSelected, fontScale, onPress }: any) => {
             zIndex={hospital.isMain ? 999 : (isSelected ? 998 : 1)}
             tracksViewChanges={trackChanges}
             onPress={onPress}
+            anchor={{ x: 0.5, y: 1 }}
         >
             <View style={styles.customMarkerContainer}>
                 {(hospital.isMain || isSelected) && (
