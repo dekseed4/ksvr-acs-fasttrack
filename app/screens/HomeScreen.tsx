@@ -80,6 +80,7 @@ const { width, height } = Dimensions.get('window');
 
 import { HOSPITAL_COORDS } from '../config';
 import SettingsMenu from '../components/SettingsMenu';
+import { useLoading } from '../context/LoadingContext';
 
 const HomeScreen = () => {
 
@@ -135,7 +136,7 @@ const HomeScreen = () => {
     const [activeEmergencyId, setActiveEmergencyId] = useState(null);
 
     // --- Profile & Loading States ---
-    const [loading, setLoading] = useState(true);
+    const { setIsLoading } = useLoading();
     const [refreshing, setRefreshing] = useState(false);
 
     // --- Location States ---
@@ -209,7 +210,7 @@ const HomeScreen = () => {
             token = (await Notifications.getExpoPushTokenAsync({
                 projectId: Constants.expoConfig?.extra?.eas?.projectId || 'YOUR_PROJECT_ID_HERE'
             })).data;
-            console.log("Expo Push Token:", token); 
+            // console.log("Expo Push Token:", token); 
             return token;
         } catch (error) {
             console.log("Error getting push token:", error);
@@ -654,12 +655,12 @@ const HomeScreen = () => {
 
     useEffect(() => {
         const initData = async () => {
-            setLoading(true);
+            setIsLoading(true);
             await registerForPushNotificationsAsync(); 
             if (authState?.token) {
                 await loadUser();
             }
-            setLoading(false);
+            setIsLoading(false);
         };
         initData();
         return () => { if (watchSubscription.current) watchSubscription.current.remove(); };
@@ -948,19 +949,6 @@ const HomeScreen = () => {
                     </>
         );
        
-    if (loading) {
-        return (
-            <View style={styles.loadingContainer}>
-                <View style={styles.loadingIconContainer}>
-                    <Heart size={80} color="#EF4444" fill="#FEF2F2" strokeWidth={1.5} />
-                </View>
-                <ActivityIndicator size="large" color="#EF4444" style={{ marginBottom: 20 }} />
-                <AppText style={styles.loadingTitle}>KSVR ACS</AppText>
-                <AppText style={styles.loadingText}>กำลังเตรียมระบบ...</AppText>
-            </View>
-        );
-    }
- 
     return (
         <GestureHandlerRootView style={{ flex: 1 }}>
             <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>

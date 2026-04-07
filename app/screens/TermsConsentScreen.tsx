@@ -22,24 +22,21 @@ const { width } = Dimensions.get('window');
 
 const TermsConsentScreen = () => {
   const navigation = useNavigation();
-  const { onLogout } = useAuth(); 
-  const [isSubmitting, setIsSubmitting] = useState(false);
   
-  // 🌟 เพิ่ม State สำหรับ Checkbox 2 ข้อ
+  // 🌟 จุดที่ 1: มัดรวม useAuth() ไว้บรรทัดเดียวให้เป็นระเบียบ
+  const { authState, updateUser, onLogout } = useAuth();
+
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [isTermsAccepted, setIsTermsAccepted] = useState(false);
   const [isPrivacyAccepted, setIsPrivacyAccepted] = useState(false);
 
-  const { authState, setAuthState } = useAuth();
-
   // ฟังก์ชันเปิดเว็บ Privacy Policy ฉบับเต็ม
   const openPrivacyPolicy = () => {
-    // 🔗 เปลี่ยน URL ด้านล่างนี้เป็นลิงก์หน้าเว็บจริงของโรงพยาบาลคุณครับ
     Linking.openURL('https://ksvrhospital.rta.mi.th/ksvr/privacy_policy'); 
   };
 
   // ฟังก์ชันกดยอมรับเงื่อนไข
   const handleAccept = async () => {
-    // 🌟 เช็คว่าติ๊กถูกครบ 2 ข้อหรือยัง
     if (!isTermsAccepted || !isPrivacyAccepted) {
       Alert.alert('กรุณายืนยัน', 'โปรดทำเครื่องหมายถูกทั้ง 2 ช่อง เพื่อยืนยันการยอมรับเงื่อนไขและนโยบายความเป็นส่วนตัว');
       return;
@@ -47,13 +44,11 @@ const TermsConsentScreen = () => {
 
     setIsSubmitting(true);
     try {
-      // 🌟 ดึง Token จาก authState (ปรับชื่อตัวแปร token ตามที่คุณเก็บไว้ใน AuthContext จริงๆ นะครับ)
       const token = authState?.token || authState?.user?.api_token; 
-
-      // 🌟 เพิ่ม Header ข้อมูล Token ลงไปใน axios
+   
       const response = await axios.post(
         `${API_URL}/accept-terms`,
-        {}, // ส่ง Body ว่างเปล่าไป (ถ้ามีข้อมูลจะส่งให้ใส่ตรงนี้)
+        {}, 
         {
           headers: {
             'Authorization': `Bearer ${token}`,
@@ -63,20 +58,20 @@ const TermsConsentScreen = () => {
         }
       );
 
-        if (response.data.status) {
-            setAuthState(prev => ({
-                ...prev, 
-                user: {
-                    ...prev.user, 
-                    term_accepted_at: new Date().toISOString() 
-                }
-            }));
-        } 
+      if (response.data.status) {
+        // อัปเดตข้อมูลกรณี API สำเร็จ
+        updateUser({
+            term_accepted_at: new Date().toISOString()
+        });
+      } 
     } catch (error) {
-      // 🌟 เพิ่มการ Log Error ให้ละเอียดขึ้น เพื่อให้รู้ว่าพังที่ไหนแน่
       console.error("API Error: ", error.response?.data || error.message);
       
-      Alert.alert('ข้อผิดพลาด', 'ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้ โปรดลองอีกครั้ง');
+        // ดัก Error ไว้ให้รู้ตัวเผื่อลืมแก้ AuthContext
+        console.error("หาฟังก์ชัน setAuthState ไม่เจอ! โปรดตรวจสอบไฟล์ AuthContext.js");
+        Alert.alert('ข้อผิดพลาดระบบ', 'ไม่พบฟังก์ชันอัปเดตข้อมูลผู้ใช้ (setAuthState)');
+  
+      
     } finally {
       setIsSubmitting(false);
     }
@@ -162,7 +157,6 @@ const TermsConsentScreen = () => {
             </View>
           </View>
 
-          {/* 🌟 ปุ่มสำหรับกดอ่านฉบับเต็ม */}
           <TouchableOpacity style={styles.readMoreButton} onPress={openPrivacyPolicy}>
             <Text style={styles.readMoreText}>อ่านนโยบายความเป็นส่วนตัว (ฉบับเต็ม)</Text>
           </TouchableOpacity>
@@ -172,7 +166,7 @@ const TermsConsentScreen = () => {
         <View style={styles.fadeOverlay} />
       </View>
 
-      {/* 🌟 ส่วนสำหรับ Checkbox ยืนยัน */}
+      {/* Checkbox ยืนยัน */}
       <View style={styles.checkboxContainer}>
         <TouchableOpacity 
           style={styles.checkboxRow} 
@@ -200,7 +194,6 @@ const TermsConsentScreen = () => {
       {/* Action Footer */}
       <View style={styles.footer}>
         <TouchableOpacity 
-          // 🌟 ปรับสีปุ่มให้เทาลงถ้ายังติ๊กไม่ครบ
           style={[styles.acceptButton, (!isTermsAccepted || !isPrivacyAccepted) && styles.acceptButtonDisabled]} 
           onPress={handleAccept}
           disabled={isSubmitting}
@@ -229,7 +222,6 @@ const TermsConsentScreen = () => {
 };
 
 const styles = StyleSheet.create({
-  // ... (เก็บ styles เดิมของคุณไว้ทั้งหมด และเพิ่มส่วนล่างนี้เข้าไปครับ) ...
   container: { flex: 1, backgroundColor: '#f1f5f9' },
   header: { paddingHorizontal: 24, paddingTop: 10, paddingBottom: 20, alignItems: 'center' },
   iconContainer: { width: 60, height: 60, backgroundColor: '#d1fae5', borderRadius: 30, justifyContent: 'center', alignItems: 'center', marginBottom: 12 },
@@ -249,7 +241,6 @@ const styles = StyleSheet.create({
   warningBox: { flexDirection: 'row', backgroundColor: '#fef2f2', padding: 12, borderRadius: 12, borderWidth: 1, borderColor: '#fecaca', gap: 10 },
   warningText: { flex: 1, fontSize: 13, color: '#991b1b', fontWeight: '600', lineHeight: 20 },
   
-  // 🌟 Styles ใหม่ที่เพิ่มเข้ามา
   readMoreButton: {
     backgroundColor: '#f1f5f9',
     padding: 12,
@@ -260,7 +251,7 @@ const styles = StyleSheet.create({
     borderColor: '#e2e8f0'
   },
   readMoreText: {
-    color: '#0369a1', // สีน้ำเงินเหมือนลิงก์
+    color: '#0369a1',
     fontWeight: 'bold',
     fontSize: 14,
   },
@@ -283,11 +274,10 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   acceptButtonDisabled: {
-    backgroundColor: '#cbd5e1', // สีเทาเมื่อยังไม่ติ๊ก
+    backgroundColor: '#cbd5e1', 
     shadowOpacity: 0,
     elevation: 0,
   },
-  
   footer: { paddingHorizontal: 24, paddingBottom: 24, backgroundColor: '#f1f5f9' },
   acceptButton: { backgroundColor: '#064e3b', flexDirection: 'row', height: 56, borderRadius: 16, justifyContent: 'center', alignItems: 'center', gap: 10, elevation: 4, shadowColor: '#064e3b', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.25, shadowRadius: 8, marginBottom: 16 },
   acceptText: { color: '#ffffff', fontSize: 18, fontWeight: 'bold' },

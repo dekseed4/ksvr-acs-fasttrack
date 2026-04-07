@@ -97,20 +97,25 @@ function AppTabs() {
 
 export default function App() {
   return (
-    // 🌟 4. ครอบแอปทั้งหมดด้วย SafeAreaProvider 
-    <SafeAreaProvider>
-        <GestureHandlerRootView style={{ flex: 1 }}>
-            <LoadingProvider>
-                <ThemeProvider>
-                    <AuthProvider> 
-                        <BottomSheetModalProvider>
-                            <Layout />
-                        </BottomSheetModalProvider> 
-                    </AuthProvider>
-                </ThemeProvider>
-            </LoadingProvider> 
-        </GestureHandlerRootView>
-    </SafeAreaProvider>
+    // 🌟 1. GestureHandlerRootView ต้องอยู่ "นอกสุด" และต้องมี flex: 1 เสมอ
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      
+      {/* 🌟 2. SafeAreaProvider ต้องมี flex: 1 เพื่อไม่ให้มันยุบตัวบน iPad */}
+      <SafeAreaProvider style={{ flex: 1 }}>
+        
+        <LoadingProvider>
+          <ThemeProvider>
+            <AuthProvider>
+              {/* 🌟 3. ย้าย BottomSheetModalProvider มาไว้ในนี้ (หรือถ้ายังกดไม่ได้ ลองคอมเมนต์บรรทัดนี้ออกชั่วคราว) */}
+              <BottomSheetModalProvider>
+                <Layout />
+              </BottomSheetModalProvider>
+            </AuthProvider>
+          </ThemeProvider>
+        </LoadingProvider>
+
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }
 

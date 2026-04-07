@@ -44,14 +44,17 @@ const ProfileScreen = ({ navigation }) => {
 
       setIsUpdating(true);
       try {
-          const response = await axios.post(`${API_URL}/update-phone-number`, 
-              { phonenumber: newPhone }, 
-              {
-                  headers: {
-                      Authorization: `Bearer ${authState.token}`, // ✅ ส่ง Token ไปด้วย
-                  }
-              }
-          );
+          // const response = await axios.post(`${API_URL}/update-phone-number`, 
+          //     { phonenumber: newPhone }, 
+          //     {
+          //         headers: {
+          //             Authorization: `Bearer ${authState.token}`, // ✅ ส่ง Token ไปด้วย
+          //         }
+          //     }
+          // );
+          const response = await axios.post(`${API_URL}/update-phone-number`, { 
+              phonenumber: newPhone 
+          });
 
           if (response.status === 200) {
               updateUser({

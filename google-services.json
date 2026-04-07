@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "960620594870",
+    "project_id": "ksvr-acs-fast-track-3dd29",
+    "storage_bucket": "ksvr-acs-fast-track-3dd29.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:960620594870:android:d16de54ec85879148dc817",
+        "android_client_info": {
+          "package_name": "com.ksvr.acsfasttrack"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC33Xjl3eaqMf0xlS7xRsgZNaZCq5fJEr8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

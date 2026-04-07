@@ -30,6 +30,7 @@
     },
     "android": {
       "package": "com.ksvr.acsfasttrack",
+      "googleServicesFile": "./google-services.json",
       "splash": {
         "resizeMode": "contain",
         "backgroundColor": "#FFFFFF"

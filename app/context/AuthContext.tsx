@@ -83,27 +83,29 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             async (error) => {
                 const originalRequest = error.config;
 
+                // ถ้าเจอ 401 และไม่ใช่หน้า Login
                 if (error.response?.status === 401 && !originalRequest.url?.includes('/login')) {
                     if (!isSessionAlertShown) {
                         isSessionAlertShown = true;
-                        console.log("⚠️ Token หมดอายุ หรือมีการเข้าสู่ระบบจากอุปกรณ์อื่น...");
-
-                        await logout(); // เตะออกทันที ไม่ต้องรอผู้ใช้กดตกลง
+                        
+                        // 🌟 ล้างค่าในเครื่องทันทีโดย "ไม่ต้อง" ยิง API ไปที่เซิร์ฟเวอร์ (เพราะรู้ว่า Token ตายแล้ว)
+                        await SecureStore.deleteItemAsync(TOKEN_KEY);
+                        delete axios.defaults.headers.common["Authorization"];
+                        
+                        setAuthState({
+                            token: null,
+                            authenticated: false,
+                            user: null,
+                        });
 
                         Alert.alert(
-                            "หมดเวลาการใช้งาน",
-                            "เซสชันของคุณหมดอายุ หรือมีการเข้าสู่ระบบจากอุปกรณ์อื่น กรุณาเข้าสู่ระบบใหม่",
-                            [
-                                {
-                                    text: "ตกลง",
-                                    onPress: () => {
-                                        isSessionAlertShown = false;
-                                    }
-                                }
-                            ],
-                            { cancelable: false }
+                            "เซสชันหมดอายุ",
+                            "มีการเข้าสู่ระบบจากอุปกรณ์อื่น กรุณาเข้าสู่ระบบใหม่",
+                            [{ text: "ตกลง", onPress: () => { isSessionAlertShown = false; } }]
                         );
                     }
+                    // สั่งตัดจบตรงนี้ ไม่ต้องส่ง Error ต่อไปหา Component อื่นๆ
+                    return new Promise(() => {}); 
                 }
                 return Promise.reject(error);
             }
@@ -136,6 +138,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
     // 🌟 4. โหลด Token ตอนเริ่มแอป
     useEffect(() => {
+        // 🌟 แก้ไขจุดที่ 4 ใน AuthContext.tsx
         const loadToken = async () => {
             try {
                 const token = await SecureStore.getItemAsync(TOKEN_KEY);
@@ -148,9 +151,14 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
                             authenticated: true,
                             user: userResponse.data.data || userResponse.data,
                         });
-                    } catch (error) {
-                        // ถ้าโปรไฟล์ดึงไม่ได้ (เช่น Token เน่า) ให้สับสวิตช์ Logout เลย
-                        await logout();
+                    } catch (error: any) {
+                        // 🌟 ถ้าเป็น 401 ไม่ต้องพ่น Error ออกมา (เพราะเรารู้ว่ามันคือ Session หมดอายุ)
+                        if (error.response?.status === 401) {
+                            console.log("ℹ️ Session expired or logged in from another device.");
+                        } else {
+                            console.error("❌ Profile load failed:", error.message);
+                        }
+                        await logout(); // เตะออกเงียบๆ ไปหน้า Login
                     }
                 } else {
                     setAuthState({ token: null, authenticated: false, user: null });

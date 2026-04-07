@@ -5,11 +5,17 @@ const PROD_URL = process.env.EXPO_PUBLIC_API_URL_PROD;
 // อย่าลืมเปลี่ยน IP เป็น IPv4 ของเครื่องคอมคุณนะครับ (ถ้าใช้ Emulator)
 const DEV_URL = process.env.EXPO_PUBLIC_API_URL_DEV;
 
-
 const HOSPITAL_COORDS = {
+    id: 'fort_krit_main',
+    name: "โรงพยาบาลค่ายกฤษณ์สีวะรา",
+    address: "ถ.นิตโย ต.แวง อ.เมือง จ.สกลนคร",
     latitude: 17.187368,
     longitude: 104.105749,
-    name: 'รพ.ค่ายกฤษณ์สีวะรา'
+    phone: "042712860",
+    isMain: true,
+    rating: 5.0,
+    user_ratings_total: 'รพ.หลัก',
+    open_now: true,
 };
 
 export { HOSPITAL_COORDS };

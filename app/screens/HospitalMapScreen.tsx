@@ -13,21 +13,9 @@ import { Navigation, Phone, MapPin, Star, Trophy } from 'lucide-react-native';
 import { useLoading } from '../context/LoadingContext';
 import { useTheme } from '../context/ThemeContext';
 import { AppText } from '../components/AppText';
+import { HOSPITAL_COORDS as MAIN_HOSPITAL } from '../config';
 
 const GOOGLE_API_KEY = process.env.EXPO_PUBLIC_GOOGLE_PLACES_API_KEY || 'ใส่_KEY_ตรงนี้';
-
-const MAIN_HOSPITAL = {
-    id: 'fort_krit_main',
-    name: "โรงพยาบาลค่ายกฤษณ์สีวะรา",
-    address: "ถ.นิตโย ต.แวง อ.เมือง จ.สกลนคร",
-    latitude: 17.1870235,
-    longitude: 104.1066193,
-    phone: "042712860",
-    isMain: true,
-    rating: 5.0,
-    user_ratings_total: 'รพ.หลัก',
-    open_now: true,
-};
 
 const { height: screenHeight } = Dimensions.get('window');
 
@@ -36,14 +24,17 @@ const HospitalMarker = ({ hospital, isSelected, fontScale, onPress }: any) => {
 
     useEffect(() => {
         setTrackChanges(true);
-        const timer = setTimeout(() => setTrackChanges(false), 500);
+        const timer = setTimeout(() => setTrackChanges(false), 1000); 
         return () => clearTimeout(timer);
     }, [fontScale, isSelected]);
 
     const markerBgColor = hospital.isMain ? '#3B82F6' : (isSelected ? '#EF4444' : '#F59E0B');
     const baseSize = 16 * fontScale;
+    
+    // 🌟 1. ลดความกว้างลงมาให้พอดีที่สุด เพื่อไม่ให้ Snapshot กว้างเกินจนเบี้ยวขวา
+    const LABEL_WIDTH = 200 * fontScale; 
+    const containerWidth = (hospital.isMain || isSelected) ? LABEL_WIDTH : 45 * fontScale;
 
-    // 🌟 2. ดักแครชกรณีไม่มีพิกัด
     if (!hospital.latitude || !hospital.longitude) return null;
 
     return (
@@ -52,21 +43,47 @@ const HospitalMarker = ({ hospital, isSelected, fontScale, onPress }: any) => {
             zIndex={hospital.isMain ? 999 : (isSelected ? 998 : 1)}
             tracksViewChanges={trackChanges}
             onPress={onPress}
+            // 🌟 2. ใช้ anchor กึ่งกลางเป๊ะๆ
             anchor={{ x: 0.5, y: 1 }}
+            // 🌟 3. ใช้ centerOffset ดึงกลับ (ถ้าเบี่ยงขวาล่าง ต้องดึง ซ้ายบน)
+            // ลองปรับค่า y: -5 หรือ -10 ดูครับ ถ้ามันยังดูจมดินอยู่
+            centerOffset={{ x: 0, y: Platform.OS === 'ios' ? -25 : 0 }} 
         >
-            <View style={styles.customMarkerContainer}>
+            <View style={{ 
+                width: containerWidth, 
+                alignItems: 'center', 
+                justifyContent: 'flex-end',
+                backgroundColor: 'transparent',
+                // 🌟 4. สำคัญมาก: ป้องกันไม่ให้ View มีพื้นที่หายใจเกินจำเป็น
+                padding: 0,
+                margin: 0
+            }}>
+                
+                {/* ป้ายชื่อ */}
                 {(hospital.isMain || isSelected) && (
                     <View style={[
                         styles.markerLabel, 
                         { 
+                            position: 'absolute',
+                            bottom: (baseSize * 2) + 12, 
+                            width: LABEL_WIDTH, 
                             backgroundColor: markerBgColor,
-                            paddingHorizontal: 12 * fontScale, 
-                            paddingVertical: 6 * fontScale,
+                            paddingHorizontal: 4, 
+                            paddingVertical: 5 * fontScale,
                             borderRadius: 10 * fontScale,
+                            borderWidth: 1.5,
+                            borderColor: 'white',
+                            shadowOpacity: 0,
+                            elevation: 0,
                         }
                     ]}>
                         <AppText 
-                            style={[styles.markerLabelText, { fontSize: baseSize }]} 
+                            style={{
+                                color: 'white',
+                                fontWeight: 'bold',
+                                textAlign: 'center',
+                                fontSize: baseSize 
+                            }} 
                             numberOfLines={1}
                         >
                             {hospital.isMain ? "⭐ " : ""}{hospital.name}
@@ -74,15 +91,24 @@ const HospitalMarker = ({ hospital, isSelected, fontScale, onPress }: any) => {
                     </View>
                 )}
 
-                <View style={[styles.customMarker, { backgroundColor: markerBgColor, padding: 6 * fontScale }]}>
+                {/* ตัวหมุด (วงกลม) */}
+                <View style={[styles.customMarker, { 
+                    backgroundColor: markerBgColor, 
+                    padding: 5 * fontScale,
+                    shadowOpacity: 0,
+                    elevation: 0,
+                    marginBottom: -1 // 🌟 ดันลงมานิดเดียวให้เชื่อมกับสามเหลี่ยม
+                }]}>
                     {hospital.isMain ? <Trophy size={baseSize} color="white" /> : <MapPin size={baseSize} color="white" />}
                 </View>
                 
+                {/* ปลายแหลมสามเหลี่ยม */}
                 <View style={[styles.markerTriangle, { 
                     borderTopColor: markerBgColor,
-                    borderTopWidth: 8 * fontScale,
+                    borderTopWidth: 9 * fontScale,
                     borderLeftWidth: 6 * fontScale,
                     borderRightWidth: 6 * fontScale,
+                    // ❌ เอา marginBottom ออกเพื่อให้ iOS หาขอบล่าง (y: 1) ได้ที่ปลายแหลมเป๊ะๆ
                 }]} />
             </View>
         </Marker>
@@ -291,6 +317,9 @@ const HospitalMapScreen = () => {
                 provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
                 showsUserLocation={true}
                 mapPadding={{ top: 40, right: 0, bottom: 200, left: 0 }}
+                
+                // 🌟 เติมบรรทัดนี้เข้าไปครับ เพื่อซ่อนป้ายชื่อของระบบแผนที่ ไม่ให้มาแย่งซีน/กวนสายตา
+                showsPointsOfInterest={false} 
             >
                 {hospitals.map((h) => (
                     <HospitalMarker
